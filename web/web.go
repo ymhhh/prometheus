@@ -232,6 +232,7 @@ type Options struct {
 	RoutePrefix                string
 	UseLocalAssets             bool
 	UserAssetsPath             string
+	UiPath                     string
 	ConsoleTemplatesPath       string
 	ConsoleLibrariesPath       string
 	EnableLifecycle            bool

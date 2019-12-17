@@ -26,22 +26,69 @@ import (
 )
 
 // Assets contains the project's assets.
-var Assets http.FileSystem = func() http.FileSystem {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	var assetsPrefix string
-	switch path.Base(wd) {
-	case "prometheus":
-		// When running Prometheus (without built-in assets) from the repo root.
-		assetsPrefix = "./web/ui"
-	case "web":
-		// When running web tests.
-		assetsPrefix = "./ui"
-	case "ui":
-		// When generating statically compiled-in assets.
-		assetsPrefix = "./"
+//var Assets http.FileSystem = func() http.FileSystem {
+//	wd, err := os.Getwd()
+//	if err != nil {
+//		panic(err)
+//	}
+//	var assetsPrefix string
+//	switch path.Base(wd) {
+//	case "prometheus":
+//		// When running Prometheus (without built-in assets) from the repo root.
+//		assetsPrefix = "./web/ui"
+//	case "web":
+//		// When running web tests.
+//		assetsPrefix = "./ui"
+//	case "ui":
+//		// When generating statically compiled-in assets.
+//		assetsPrefix = "./"
+//	}
+//
+//	static := filter.Keep(
+//		http.Dir(path.Join(assetsPrefix, "static")),
+//		func(path string, fi os.FileInfo) bool {
+//			return fi.IsDir() ||
+//				(!strings.HasSuffix(path, "map.js") &&
+//					!strings.HasSuffix(path, "/bootstrap.js") &&
+//					!strings.HasSuffix(path, "/bootstrap-theme.css") &&
+//					!strings.HasSuffix(path, "/bootstrap.css"))
+//		},
+//	)
+//
+//	templates := filter.Keep(
+//		http.Dir(path.Join(assetsPrefix, "templates")),
+//		func(path string, fi os.FileInfo) bool {
+//			return fi.IsDir() || strings.HasSuffix(path, ".html")
+//		},
+//	)
+//
+//	return union.New(map[string]http.FileSystem{
+//		"/templates": templates,
+//		"/static":    static,
+//	})
+//}()
+
+var Assets http.FileSystem
+
+func AssetsFunc(uiPath string) http.FileSystem {
+	assetsPrefix := uiPath
+	if assetsPrefix == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+
+		switch path.Base(wd) {
+		case "prometheus":
+			// When running Prometheus (without built-in assets) from the repo root.
+			assetsPrefix = "./web/ui"
+		case "web":
+			// When running web tests.
+			assetsPrefix = "./ui"
+		case "ui":
+			// When generating statically compiled-in assets.
+			assetsPrefix = "./"
+		}
 	}
 
 	static := filter.Keep(
@@ -66,4 +113,4 @@ var Assets http.FileSystem = func() http.FileSystem {
 		"/templates": templates,
 		"/static":    static,
 	})
-}()
+}
