@@ -19,6 +19,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/prometheus/web/ui"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
@@ -165,6 +166,9 @@ func main() {
 
 	a.Flag("web.enable-admin-api", "Enable API endpoints for admin control actions.").
 		Default("false").BoolVar(&cfg.web.EnableAdminAPI)
+
+	a.Flag("web.ui-path", "Path to the web ui directory.").
+		Default("").StringVar(&cfg.web.UiPath)
 
 	a.Flag("web.console.templates", "Path to the console template directory, available at /consoles.").
 		Default("consoles").StringVar(&cfg.web.ConsoleTemplatesPath)
@@ -350,10 +354,14 @@ func main() {
 		ctxScrape, cancelScrape = context.WithCancel(context.Background())
 		discoveryManagerScrape  = discovery.NewManager(ctxScrape, log.With(logger, "component", "discovery manager scrape"), discovery.Name("scrape"))
 
+		ctxKaScrape, cancelKaScrape = context.WithCancel(context.Background())
+		discoveryKaManagerScrape  = discovery.NewManager(ctxKaScrape, log.With(logger, "component", "discovery kafka manager scrape"), discovery.Name("ka_scrape"))
+
 		ctxNotify, cancelNotify = context.WithCancel(context.Background())
 		discoveryManagerNotify  = discovery.NewManager(ctxNotify, log.With(logger, "component", "discovery manager notify"), discovery.Name("notify"))
 
 		scrapeManager = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
+		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage)
 
 		opts = promql.EngineOpts{
 			Logger:             log.With(logger, "component", "query engine"),
@@ -412,6 +420,7 @@ func main() {
 	}
 
 	// Depends on cfg.web.ScrapeManager so needs to be after cfg.web.ScrapeManager = scrapeManager.
+	ui.Assets = ui.AssetsFunc(cfg.web.UiPath)
 	webHandler := web.New(log.With(logger, "component", "web"), &cfg.web)
 
 	// Monitor outgoing connections on default transport with conntrack.
@@ -431,6 +440,14 @@ func main() {
 				c[v.JobName] = v.ServiceDiscoveryConfig
 			}
 			return discoveryManagerScrape.ApplyConfig(c)
+		},
+		kaScrapeManager.ApplyConfig,
+		func(cfg *config.Config) error {
+			c := make(map[string]sd_config.ServiceDiscoveryConfig)
+			for _, v := range cfg.KaScrapeConfigs {
+				c[v.JobName] = v.ServiceDiscoveryConfig
+			}
+			return discoveryKaManagerScrape.ApplyConfig(c)
 		},
 		notifierManager.ApplyConfig,
 		func(cfg *config.Config) error {
@@ -529,6 +546,20 @@ func main() {
 		)
 	}
 	{
+		// Scrape kafka discovery manager.
+		g.Add(
+			func() error {
+				err := discoveryKaManagerScrape.Run()
+				level.Info(logger).Log("msg", "Scrape kafka discovery manager stopped")
+				return err
+			},
+			func(err error) {
+				level.Info(logger).Log("msg", "Stopping scrape kafka discovery manager...")
+				cancelKaScrape()
+			},
+		)
+	}
+	{
 		// Notify discovery manager.
 		g.Add(
 			func() error {
@@ -561,6 +592,29 @@ func main() {
 				// so that it doesn't try to write samples to a closed storage.
 				level.Info(logger).Log("msg", "Stopping scrape manager...")
 				scrapeManager.Stop()
+			},
+		)
+	}
+	{
+		// Scrape kafka manager.
+		g.Add(
+			func() error {
+				// When the scrape manager receives a new targets list
+				// it needs to read a valid config for each job.
+				// It depends on the config being in sync with the discovery manager so
+				// we wait until the config is fully loaded.
+				<-reloadReady.C
+
+				//err := kaScrapeManager.Run(discoveryKaManagerScrape.SyncCh())
+				err := kaScrapeManager.Run(discoveryKaManagerScrape.SyncCh())
+				level.Info(logger).Log("msg", "Scrape kafka manager stopped")
+				return err
+			},
+			func(err error) {
+				// Scrape manager needs to be stopped before closing the local TSDB
+				// so that it doesn't try to write samples to a closed storage.
+				level.Info(logger).Log("msg", "Stopping kafka scrape manager...")
+				kaScrapeManager.Stop()
 			},
 		)
 	}

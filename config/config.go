@@ -130,10 +130,11 @@ var (
 
 // Config is the top-level configuration for Prometheus's config files.
 type Config struct {
-	GlobalConfig   GlobalConfig    `yaml:"global"`
-	AlertingConfig AlertingConfig  `yaml:"alerting,omitempty"`
-	RuleFiles      []string        `yaml:"rule_files,omitempty"`
-	ScrapeConfigs  []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	GlobalConfig    GlobalConfig    `yaml:"global"`
+	AlertingConfig  AlertingConfig  `yaml:"alerting,omitempty"`
+	RuleFiles       []string        `yaml:"rule_files,omitempty"`
+	ScrapeConfigs   []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	KaScrapeConfigs []*ScrapeConfig `yaml:"kascrape_configs,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
@@ -196,6 +197,10 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 		clientPaths(&cfg.HTTPClientConfig)
 		sdPaths(&cfg.ServiceDiscoveryConfig)
 	}
+	for _, cfg := range cfg.KaScrapeConfigs {
+		clientPaths(&cfg.HTTPClientConfig)
+		sdPaths(&cfg.ServiceDiscoveryConfig)
+	}
 	for _, cfg := range cfg.AlertingConfig.AlertmanagerConfigs {
 		clientPaths(&cfg.HTTPClientConfig)
 		sdPaths(&cfg.ServiceDiscoveryConfig)
@@ -241,6 +246,31 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Do global overrides and validate unique names.
 	jobNames := map[string]struct{}{}
 	for _, scfg := range c.ScrapeConfigs {
+		if scfg == nil {
+			return errors.New("empty or null scrape config section")
+		}
+		// First set the correct scrape interval, then check that the timeout
+		// (inferred or explicit) is not greater than that.
+		if scfg.ScrapeInterval == 0 {
+			scfg.ScrapeInterval = c.GlobalConfig.ScrapeInterval
+		}
+		if scfg.ScrapeTimeout > scfg.ScrapeInterval {
+			return errors.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", scfg.JobName)
+		}
+		if scfg.ScrapeTimeout == 0 {
+			if c.GlobalConfig.ScrapeTimeout > scfg.ScrapeInterval {
+				scfg.ScrapeTimeout = scfg.ScrapeInterval
+			} else {
+				scfg.ScrapeTimeout = c.GlobalConfig.ScrapeTimeout
+			}
+		}
+
+		if _, ok := jobNames[scfg.JobName]; ok {
+			return errors.Errorf("found multiple scrape configs with job name %q", scfg.JobName)
+		}
+		jobNames[scfg.JobName] = struct{}{}
+	}
+	for _, scfg := range c.KaScrapeConfigs {
 		if scfg == nil {
 			return errors.New("empty or null scrape config section")
 		}
@@ -340,6 +370,15 @@ func (c *GlobalConfig) isZero() bool {
 		c.EvaluationInterval == 0
 }
 
+type KaConfig struct {
+	KaBroker string `yaml:"ka_broker,omitempty"`
+	KaTopic  string `yaml:"ka_topic,omitempty"`
+	KaUser   string `yaml:"ka_user,omitempty"`
+	KaPwd    string `yaml:"ka_pwd,omitempty"`
+	KaVer    string `yaml:"ka_ver,omitempty"`
+	KaGroup  string `yaml:"ka_group,omitempty"`
+}
+
 // ScrapeConfig configures a scraping unit for Prometheus.
 type ScrapeConfig struct {
 	// The job name to which the job label is set by default.
@@ -371,6 +410,8 @@ type ScrapeConfig struct {
 	RelabelConfigs []*relabel.Config `yaml:"relabel_configs,omitempty"`
 	// List of metric relabel configurations.
 	MetricRelabelConfigs []*relabel.Config `yaml:"metric_relabel_configs,omitempty"`
+	KaConfig             KaConfig          `yaml:"ka_config"`
+	MaxGoNum             int               `yaml:"max_go_num,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
