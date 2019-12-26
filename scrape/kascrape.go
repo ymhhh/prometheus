@@ -126,7 +126,7 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 func (sp *kaScrapePool) run(t *Target) {
 	//sp.mtx.RLock()
 	//defer sp.mtx.RUnlock()
-	level.Info(sp.logger).Log("msg", "kaScrapPool run start...", "job_name", sp.config.JobName)
+	level.Info(sp.logger).Log("msg", "kaScrapPool run start...")
 
 	ca := newScrapeCache()
 	s := &targetScraper{Target: t, client: nil, timeout: 60 * time.Second}
@@ -143,6 +143,7 @@ func (sp *kaScrapePool) run(t *Target) {
 		return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
 	}
 
+LOOP:
 	for {
 		select {
 		case msg := <-sp.message:
@@ -157,13 +158,12 @@ func (sp *kaScrapePool) run(t *Target) {
 				//}
 			}
 		case <-sp.isStop:
-			goto END
-
+			<-sp.kaCtx.Done()
+			break LOOP
 		}
 	}
 
-END:
-	level.Info(sp.logger).Log("msg", "kaScrapPool run exit...", "job_name", sp.config.JobName)
+	level.Info(sp.logger).Log("msg", "kaScrapPool run exit...")
 }
 
 // stop stop the procedure
@@ -179,14 +179,14 @@ func (sp *kaScrapePool) recv() {
 	level.Info(sp.logger).Log("msg", "recv message get connect start...")
 	client, err := sp.getKaConn()
 	if err != nil {
-		level.Error(sp.logger).Log("msg", "recv message get connect err", "err", err.Error())
+		level.Error(sp.logger).Log("msg", "recv message get connect err", "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
 		panic("get kafka connect err")
 	}
 	level.Info(sp.logger).Log("msg", "recv message get connect success...")
 
 	consumer := newKaHandler(sp.message, sp.logger)
 	for {
-		level.Info(sp.logger).Log("msg", "recv message ready...", "job_name", sp.config.JobName)
+		level.Info(sp.logger).Log("msg", "recv message ready...")
 		err = client.Consume(sp.kaCtx, strings.Split(sp.config.KaConfig.KaTopic, ","), consumer)
 		if err != nil {
 			level.Error(sp.logger).Log("msg", "recv kafka message err", "err", err.Error())
@@ -198,6 +198,7 @@ func (sp *kaScrapePool) recv() {
 			break
 		}
 	}
+	client.Close()
 
 	level.Info(sp.logger).Log("msg", "recv message end...")
 }
@@ -211,7 +212,7 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 			if sp.getCurNum() >= sp.maxGoNums {
 				break
 			}
-			level.Info(sp.logger).Log("job_name", sp.config.JobName, "curGoNum", sp.getCurNum(), "maxGoNum", sp.maxGoNums)
+			level.Info(sp.logger).Log("curGoNum", sp.getCurNum(), "maxGoNum", sp.maxGoNums)
 
 			sp.incCurNum()
 			go func() {
@@ -225,11 +226,7 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 	start()
 
 	// recv message
-	go func() {
-		sp.wg.Add(1)
-		defer sp.wg.Done()
-		sp.recv()
-	}()
+	go sp.recv()
 
 	for {
 		select {
