@@ -19,6 +19,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/prometheus/util"
 	"github.com/prometheus/prometheus/web/ui"
 	"net"
 	"net/http"
@@ -355,12 +356,12 @@ func main() {
 		discoveryManagerScrape  = discovery.NewManager(ctxScrape, log.With(logger, "component", "discovery manager scrape"), discovery.Name("scrape"))
 
 		ctxKaScrape, cancelKaScrape = context.WithCancel(context.Background())
-		discoveryKaManagerScrape  = discovery.NewManager(ctxKaScrape, log.With(logger, "component", "discovery kafka manager scrape"), discovery.Name("ka_scrape"))
+		discoveryKaManagerScrape    = discovery.NewManager(ctxKaScrape, log.With(logger, "component", "discovery kafka manager scrape"), discovery.Name("ka_scrape"))
 
 		ctxNotify, cancelNotify = context.WithCancel(context.Background())
 		discoveryManagerNotify  = discovery.NewManager(ctxNotify, log.With(logger, "component", "discovery manager notify"), discovery.Name("notify"))
 
-		scrapeManager = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
+		scrapeManager   = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
 		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage)
 
 		opts = promql.EngineOpts{
@@ -420,7 +421,7 @@ func main() {
 	}
 
 	// Depends on cfg.web.ScrapeManager so needs to be after cfg.web.ScrapeManager = scrapeManager.
-	ui.Assets = ui.AssetsFunc(cfg.web.UiPath)
+	ui.Assets = util.SetAssets(cfg.web.UiPath)
 	webHandler := web.New(log.With(logger, "component", "web"), &cfg.web)
 
 	// Monitor outgoing connections on default transport with conntrack.

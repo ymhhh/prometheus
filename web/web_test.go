@@ -230,55 +230,55 @@ func TestReadyAndHealthy(t *testing.T) {
 	testutil.Ok(t, err)
 	testutil.Equals(t, http.StatusOK, resp.StatusCode)
 
-	resp, err = http.Get("http://localhost:9090/graph")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Post("http://localhost:9090/api/v2/admin/tsdb/snapshot", "", strings.NewReader(""))
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Post("http://localhost:9090/api/v2/admin/tsdb/delete_series", "", strings.NewReader("{}"))
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/alerts")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/flags")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/rules")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/service-discovery")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/targets")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/config")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
-
-	resp, err = http.Get("http://localhost:9090/status")
-
-	testutil.Ok(t, err)
-	testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//resp, err = http.Get("http://localhost:9090/graph")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Post("http://localhost:9090/api/v2/admin/tsdb/snapshot", "", strings.NewReader(""))
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Post("http://localhost:9090/api/v2/admin/tsdb/delete_series", "", strings.NewReader("{}"))
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/alerts")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/flags")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/rules")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/service-discovery")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/targets")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/config")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
+	//
+	//resp, err = http.Get("http://localhost:9090/status")
+	//
+	//testutil.Ok(t, err)
+	//testutil.Equals(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestRoutePrefix(t *testing.T) {

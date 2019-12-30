@@ -3,6 +3,7 @@
 /*.yaml
 /*.yml
 *.exe
+/tsdb/tsdb
 .idea
 
 /prometheus
@@ -11,6 +12,8 @@ benchmark.txt
 /data
 /cmd/prometheus/data
 /cmd/prometheus/debug
+/etc
+/bin
 
 !/.travis.yml
 !/.promu.yml
