@@ -17,17 +17,37 @@ package main
 
 import (
 	"log"
+	"os"
+	"path"
 	"time"
 
 	"github.com/shurcooL/vfsgen"
 
 	"github.com/prometheus/prometheus/pkg/modtimevfs"
+	"github.com/prometheus/prometheus/util"
 	"github.com/prometheus/prometheus/web/ui"
 )
 
 func main() {
+	assetsPrefix := ""
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	switch path.Base(wd) {
+	case "prometheus":
+		// When running Prometheus (without built-in assets) from the repo root.
+		assetsPrefix = "./web/ui"
+	case "web":
+		// When running web tests.
+		assetsPrefix = "./ui"
+	case "ui":
+		// When generating statically compiled-in assets.
+		assetsPrefix = "./"
+	}
+	ui.Assets = util.SetAssets(assetsPrefix)
 	fs := modtimevfs.New(ui.Assets, time.Unix(1, 0))
-	err := vfsgen.Generate(fs, vfsgen.Options{
+	err = vfsgen.Generate(fs, vfsgen.Options{
 		PackageName:  "ui",
 		BuildTags:    "builtinassets",
 		VariableName: "Assets",

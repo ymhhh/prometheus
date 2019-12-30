@@ -1,11 +1,28 @@
+// Copyright 2015 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package scrape
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -23,9 +40,16 @@ import (
 )
 
 var (
-	nowFunc                        = time.Now
-	SHA256  scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
+	SHA256       scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
+	MSG_CHAN_LEN                        = 500
 )
+
+const (
+	MSG_T_JSON = "json"
+	MSG_T_PROM = "prom"
+)
+
+type MetricData map[string]interface{}
 
 type XDGSCRAMClient struct {
 	*scram.Client
@@ -55,19 +79,7 @@ func (x *XDGSCRAMClient) Done() bool {
 type kaScrapePool struct {
 	appendable Appendable
 	logger     log.Logger
-
-	mtx    sync.RWMutex
-	config *config.ScrapeConfig
-	//client *http.Client
-	// Targets and loops must always be synchronized to have the same
-	// set of hashes.
-	//activeTargets  map[uint64]*Target
-	droppedTargets []*Target
-	//loops          map[uint64]loop
-	//cancel         context.CancelFunc
-	//
-	//// Constructor for new scrape loops. This is settable for testing convenience.
-	//newLoop func(scrapeLoopOptions) loop
+	config     *config.ScrapeConfig
 
 	maxGoNums int        // max goroutine number
 	curGoNums int        // current goroutine number
@@ -86,6 +98,11 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
+	msgLen := MSG_CHAN_LEN
+	if msgLen > cfg.MaxGoNum {
+		msgLen = cfg.MaxGoNum
+	}
+
 	sp := kaScrapePool{
 		config:     cfg,
 		appendable: app,
@@ -93,10 +110,15 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		curGoNums:  0,
 		isStop:     make(chan bool),
 		isReload:   make(chan bool),
-		message:    make(chan string),
+		message:    make(chan string, msgLen),
 		logger:     logger,
 	}
 
+	if cfg.MsgType == "MSG_T_JSON" && len(cfg.MsgLabel) == 0 {
+		return &sp, errors.New("msg label is empty")
+	}
+
+	// kafka config
 	sp.kaCfg = sarama.NewConfig()
 	sp.kaCfg.Consumer.Return.Errors = true
 	//sp.kaCfg.Group.Return.Notifications = true
@@ -143,10 +165,21 @@ func (sp *kaScrapePool) run(t *Target) {
 		return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
 	}
 
+	var err error
 LOOP:
 	for {
 		select {
 		case msg := <-sp.message:
+			if msg == "" {
+				continue
+			}
+			if sp.config.MsgType == MSG_T_JSON {
+				msg, err = sp.json2Prome(&msg)
+				if err != nil {
+					level.Error(sp.logger).Log("msg", "json to prome err", "err", err.Error())
+					continue
+				}
+			}
 			start := time.Now()
 			_, _, _, appErr := sp.append([]byte(msg), "", start, ca, sm)
 			if appErr != nil {
@@ -159,6 +192,7 @@ LOOP:
 			}
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
+			<-time.After(5 * time.Second)
 			break LOOP
 		}
 	}
@@ -215,8 +249,8 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 			level.Info(sp.logger).Log("curGoNum", sp.getCurNum(), "maxGoNum", sp.maxGoNums)
 
 			sp.incCurNum()
+			sp.wg.Add(1)
 			go func() {
-				sp.wg.Add(1)
 				defer sp.decCurNum()
 				defer sp.wg.Done()
 				sp.run(targets[0]) // targets 必须配置一个，方便复用之前的代码
@@ -238,6 +272,92 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 			return
 		}
 	}
+}
+
+// json2Prome json转prome格式
+func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
+	md := MetricData{}
+	err := json.Unmarshal([]byte(*msg), &md)
+	if err != nil {
+		return "", err
+	}
+
+	// label
+	var buf bytes.Buffer
+	for _, k := range sp.config.MsgLabel {
+		if label, ok := md[k].(string); ok {
+			buf.WriteString(k + `="` + label + `",`)
+		} else {
+			buf.WriteString(k + `="",`)
+		}
+		delete(md, k)
+	}
+	labels := buf.String()
+
+	// value
+	have := false
+	buf.Reset()
+	for k, v := range md {
+		// value, "val":200
+		if t, ok := v.(float64); ok {
+			buf.WriteString("# TYPE " + k + " untyped\n")
+			buf.WriteString(k)
+			buf.WriteString("{")
+			buf.WriteString(labels)
+			buf.WriteString("} ")
+			buf.WriteString(fmt.Sprintf("%f\n", t))
+			have = true
+			continue
+		}
+
+		// key-value map, "val":{"v1": 100, "v2":200}
+		if t, ok := v.(map[string]interface{}); ok {
+			for k1, v1 := range t {
+				if _, ok := v1.(float64); !ok {
+					continue
+				}
+				name := k + "_" + k1
+				buf.WriteString("# TYPE " + name + " untyped\n")
+				buf.WriteString(name)
+				buf.WriteString("{")
+				buf.WriteString(labels)
+				buf.WriteString("} ")
+				buf.WriteString(fmt.Sprintf("%f\n", v1))
+				have = true
+			}
+			continue
+		}
+
+		// key-value list, "val":[{"v11": 100, "v12":200}, {"v21":300, "v22":400}]
+		if t, ok := v.([]interface{}); ok {
+			m := map[string]float64{}
+			for _, t1 := range t {
+				if v1, ok := t1.(map[string]interface{}); ok {
+					for k2, v2 := range v1 {
+						if t2, ok := v2.(float64); ok {
+							m[k+"_"+k2] = t2
+						}
+					} // end for k2
+				}
+			} // end for _, t1
+
+			for k1, v1 := range m {
+				buf.WriteString("# TYPE " + k1 + " untyped\n")
+				buf.WriteString(k1)
+				buf.WriteString("{")
+				buf.WriteString(labels)
+				buf.WriteString("} ")
+				buf.WriteString(fmt.Sprintf("%f\n", v1))
+				have = true
+			}
+		}
+	}
+
+	if !have {
+		return "", errors.New("no metric data")
+	}
+
+	return buf.String(), nil
 }
 
 // append add message to TSDB
