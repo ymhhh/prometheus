@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -66,4 +67,14 @@ func SetAssets(uiPath string) http.FileSystem {
 		"/templates": templates,
 		"/static":    static,
 	})
+}
+
+// CheckMetircName check the metric name
+func CheckMetircName(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	r, _ := regexp.Compile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
+	return r.MatchString(name)
 }
