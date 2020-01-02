@@ -97,7 +97,8 @@ func (m *KaManager) ApplyConfig(cfg *config.Config) error {
 				continue
 			}
 			m.scrapePools[name] = sp
-			sp.Sync(m.targetSets[name])
+		} else {
+			m.scrapePools[name].SetChanged(false)
 		}
 	}
 

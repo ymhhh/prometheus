@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util"
 	"github.com/xdg/scram"
 	"hash"
 	"io"
@@ -80,6 +81,7 @@ type kaScrapePool struct {
 	appendable Appendable
 	logger     log.Logger
 	config     *config.ScrapeConfig
+	mtx        sync.RWMutex
 
 	maxGoNums int        // max goroutine number
 	curGoNums int        // current goroutine number
@@ -87,6 +89,7 @@ type kaScrapePool struct {
 	wg        sync.WaitGroup
 	isStop    chan bool
 	isReload  chan bool
+	isChange  bool // 配置是否修改
 
 	kaCfg    *sarama.Config
 	kaCtx    context.Context
@@ -110,6 +113,7 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		curGoNums:  0,
 		isStop:     make(chan bool),
 		isReload:   make(chan bool),
+		isChange:   true,
 		message:    make(chan string, msgLen),
 		logger:     logger,
 	}
@@ -210,7 +214,6 @@ func (sp *kaScrapePool) stop() {
 // recv recv message from kafka
 func (sp *kaScrapePool) recv() {
 	level.Info(sp.logger).Log("msg", "recv message start...")
-	level.Info(sp.logger).Log("msg", "recv message get connect start...")
 	client, err := sp.getKaConn()
 	if err != nil {
 		level.Error(sp.logger).Log("msg", "recv message get connect err", "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
@@ -238,6 +241,10 @@ func (sp *kaScrapePool) recv() {
 }
 
 func (sp *kaScrapePool) loop(targets []*Target) {
+	if !sp.GetChanged() {
+		level.Info(sp.logger).Log("msg", "configuration has not changed")
+		return
+	}
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -300,6 +307,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 	for k, v := range md {
 		// value, "val":200
 		if t, ok := v.(float64); ok {
+			if !util.CheckMetircName(k) {
+				level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k)
+				continue
+			}
 			buf.WriteString("# TYPE " + k + " untyped\n")
 			buf.WriteString(k)
 			buf.WriteString("{")
@@ -317,6 +328,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 					continue
 				}
 				name := k + "_" + k1
+				if !util.CheckMetircName(name) {
+					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", name)
+					continue
+				}
 				buf.WriteString("# TYPE " + name + " untyped\n")
 				buf.WriteString(name)
 				buf.WriteString("{")
@@ -342,6 +357,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 			} // end for _, t1
 
 			for k1, v1 := range m {
+				if !util.CheckMetircName(k1) {
+					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k1)
+					continue
+				}
 				buf.WriteString("# TYPE " + k1 + " untyped\n")
 				buf.WriteString(k1)
 				buf.WriteString("{")
@@ -572,6 +591,22 @@ func (sp *kaScrapePool) Sync(tgs []*targetgroup.Group) {
 	}
 
 	go sp.loop(all)
+}
+
+// GetChanged return isChanged
+func (sp *kaScrapePool) GetChanged() bool {
+	sp.mtx.RLock()
+	defer sp.mtx.RUnlock()
+
+	return sp.isChange
+}
+
+// SetChanged set isChanged
+func (sp *kaScrapePool) SetChanged(changed bool) {
+	sp.mtx.Lock()
+	defer sp.mtx.Unlock()
+
+	sp.isChange = changed
 }
 
 // getKaConn return a kafka connect.
