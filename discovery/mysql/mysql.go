@@ -105,12 +105,8 @@ func NewDiscovery(cfg *SDConfig, l log.Logger) (*Discovery, error) {
 	if l == nil {
 		l = log.NewNopLogger()
 	}
-	// level.Debug(l).Log("SD_config", cfg)
-	fmt.Println("SD_config", cfg.DBConfig)
 	tCfg := config.MapGetter().GenMapConfig(config.ReaderTypeYAML, cfg.DBConfig)
 
-	// level.Debug(l).Log("tCfg", tCfg)
-	fmt.Println("tCfg", tCfg)
 	engines, err := txorm.NewXormEnginesFromConfig(tCfg, "mysql")
 	if err != nil {
 		return nil, err
@@ -139,7 +135,6 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	session := p.engine.NewSession()
 	defer session.Close()
 	for k, v := range p.cfg.FilterConditions {
-		fmt.Println("key", k, "value", v)
 		session = session.In(k, v)
 	}
 
