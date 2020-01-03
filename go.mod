@@ -15,6 +15,9 @@ require (
 	github.com/go-kit/kit v0.9.0
 	github.com/go-logfmt/logfmt v0.4.0
 	github.com/go-openapi/strfmt v0.19.2
+	github.com/go-trellis/config v1.3.4
+	github.com/go-trellis/txorm v1.0.0
+	github.com/go-xorm/xorm v0.7.9
 	github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
 	github.com/golang/snappy v0.0.1
 	github.com/google/pprof v0.0.0-20190723021845-34ac40c74b70
@@ -52,7 +55,7 @@ require (
 	google.golang.org/grpc v1.22.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.7
 	k8s.io/api v0.0.0-20190813020757-36bff7324fb7
 	k8s.io/apimachinery v0.0.0-20190809020650-423f5d784010
 	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

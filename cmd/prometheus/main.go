@@ -19,8 +19,6 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/prometheus/util"
-	"github.com/prometheus/prometheus/web/ui"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
@@ -34,6 +32,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/prometheus/util"
+	"github.com/prometheus/prometheus/web/ui"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
