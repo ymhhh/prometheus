@@ -122,8 +122,23 @@ github.com/go-openapi/strfmt
 github.com/go-openapi/swag
 # github.com/go-openapi/validate v0.17.2
 github.com/go-openapi/validate
+# github.com/go-sql-driver/mysql v1.4.1
+github.com/go-sql-driver/mysql
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
+# github.com/go-trellis/algorithm v0.0.0-20190611160533-53aa8c3b8e20
+github.com/go-trellis/algorithm/data-structures/stack
+github.com/go-trellis/algorithm/encryption/hash
+# github.com/go-trellis/common v1.2.0
+github.com/go-trellis/common/formats
+# github.com/go-trellis/config v1.3.4
+github.com/go-trellis/config
+# github.com/go-trellis/errors v0.0.0-20171025051548-b0cc96c4f84c
+github.com/go-trellis/errors
+# github.com/go-trellis/txorm v1.0.0
+github.com/go-trellis/txorm
+# github.com/go-xorm/xorm v0.7.9
+github.com/go-xorm/xorm
 # github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/plugin/compare
@@ -388,6 +403,10 @@ golang.org/x/sync/semaphore
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
+golang.org/x/text/encoding
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
@@ -418,8 +437,9 @@ google.golang.org/api/option
 google.golang.org/api/support/bundler
 google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
-# google.golang.org/appengine v1.5.0
+# google.golang.org/appengine v1.6.0
 google.golang.org/appengine
+google.golang.org/appengine/cloudsql
 google.golang.org/appengine/internal
 google.golang.org/appengine/internal/app_identity
 google.golang.org/appengine/internal/base
@@ -512,7 +532,7 @@ gopkg.in/jcmturner/gokrb5.v7/types
 # gopkg.in/jcmturner/rpc.v1 v1.1.0
 gopkg.in/jcmturner/rpc.v1/mstypes
 gopkg.in/jcmturner/rpc.v1/ndr
-# gopkg.in/yaml.v2 v2.2.2
+# gopkg.in/yaml.v2 v2.2.7
 gopkg.in/yaml.v2
 # k8s.io/api v0.0.0-20190813020757-36bff7324fb7
 k8s.io/api/admissionregistration/v1beta1
@@ -702,3 +722,7 @@ k8s.io/utils/integer
 k8s.io/utils/trace
 # sigs.k8s.io/yaml v1.1.0
 sigs.k8s.io/yaml
+# xorm.io/builder v0.3.6
+xorm.io/builder
+# xorm.io/core v0.7.2
+xorm.io/core
