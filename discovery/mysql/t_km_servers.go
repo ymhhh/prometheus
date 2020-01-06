@@ -29,7 +29,7 @@ type TKmServers struct {
 	MachineRoom        model.LabelValue `xorm:"'MACHINE_ROOM' VARCHAR(100)"`
 	UseStatus          model.LabelValue `xorm:"'USE_STATUS' VARCHAR(100)"`
 	Cabinet            string           `xorm:"'CABINET' VARCHAR(100)"`
-	Fzr                string           `xorm:"'FZR' VARCHAR(100)"`
+	Fzr                model.LabelValue `xorm:"'FZR' VARCHAR(100)"`
 	Contact            string           `xorm:"'CONTACT' CHAR(255)"`
 	CPU                string           `xorm:"'CPU' VARCHAR(100)"`
 	Memory             string           `xorm:"'MEMORY' VARCHAR(100)"`
@@ -54,13 +54,18 @@ func (p *TKmServers) parseTag() {
 	if len(p.Tag) == 0 {
 		return
 	}
+	labels := make(map[model.LabelName][]string)
 
 	for _, tag := range strings.Split(p.Tag, ",") {
 		kvs := strings.Split(tag, ":")
-		if len(kvs) >= 2 {
-			p.tagMaps[model.LabelName(kvs[0])] = model.LabelValue(kvs[1])
-		} else if len(kvs) == 1 {
-			p.tagMaps[model.LabelName(kvs[0])] = ""
+		if len(kvs) < 2 {
+			continue
 		}
+		labelKey := model.LabelName(kvs[0])
+		labels[labelKey] = append(labels[labelKey], kvs[1])
+	}
+
+	for key, lSlice := range labels {
+		p.tagMaps[key] = model.LabelValue(strings.Join(lSlice, ","))
 	}
 }

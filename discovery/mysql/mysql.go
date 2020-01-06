@@ -41,6 +41,20 @@
 //       filter_conditions:
 //         "CONTACT": ["huanghonghu"]
 //         "USE_STATUS": ["上线"]
+//       tag_alias:
+//         "在线状态": "online_status"
+//         "服务器类型": "sever_type"
+//         "内存": "memory"
+//         "机房": "machine_root"
+//         "产品线": "cluster_type"
+//         "集群名称": "cluster_name"
+//         "服务器型号": "model_type"
+//         "cpu块": "cpu"
+//         "归属": "ascription"
+//         "saltmaster信息": "saltmaster"
+//         "服务": "services"
+//         "硬盘": "disk"
+//         "负责人": "charge"
 
 package mysql
 
@@ -72,6 +86,8 @@ type SDConfig struct {
 	DBConfig         map[string]interface{} `yaml:"database,omitempty"`
 	RefreshInterval  model.Duration         `yaml:"refresh_interval,omitempty"`
 	FilterConditions map[string][]string    `yaml:"filter_conditions,omitempty"`
+
+	TagAlias map[string]string `yaml:"tag_alias,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -105,6 +121,7 @@ func NewDiscovery(cfg *SDConfig, l log.Logger) (*Discovery, error) {
 	if l == nil {
 		l = log.NewNopLogger()
 	}
+
 	tCfg := config.MapGetter().GenMapConfig(config.ReaderTypeYAML, cfg.DBConfig)
 
 	engines, err := txorm.NewXormEnginesFromConfig(tCfg, "mysql")
@@ -168,32 +185,42 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		group.Labels = model.LabelSet{}
 
 		if len(server.Attribution) > 0 {
-			group.Labels["Attribution"] = server.Attribution
+			group.Labels["attribution"] = server.Attribution
 		}
 		if len(server.ClusterName) > 0 {
 			group.Labels["cluster"] = server.ClusterName
 		}
 		if len(server.UseStatus) > 0 {
-			group.Labels["在线状态"] = server.UseStatus
+			group.Labels["use_status"] = server.UseStatus
 		}
 		if len(server.DeploymentServices) > 0 {
-			group.Labels["服务"] = server.DeploymentServices
+			group.Labels["deployment_services"] = server.DeploymentServices
 		}
 		if len(server.MachineRoom) > 0 {
-			group.Labels["机房"] = server.MachineRoom
+			group.Labels["machine_room"] = server.MachineRoom
+		}
+		if len(server.Fzr) > 0 {
+			group.Labels["fzr"] = server.Fzr
 		}
 
-		if rsGroup, ok := server.tagMaps["RSGroup"]; ok {
-			group.Labels["RSGroup"] = rsGroup
-		}
-		if product, ok := server.tagMaps["产品线"]; ok {
-			group.Labels["产品线"] = product
-		}
-		if ascription, ok := server.tagMaps["归属"]; ok {
-			group.Labels["归属"] = ascription
-		}
-		if clasterName, ok := server.tagMaps["集群名称"]; ok {
-			group.Labels["集群名称"] = clasterName
+		for tag, value := range server.tagMaps {
+			aliasTag := p.tagAlias(string(tag))
+			level.Debug(p.logger).Log("msg", "tag_alias", "tag", tag, "aliasTag", aliasTag)
+
+			if len(aliasTag) != 0 {
+				if !aliasTag.IsValid() {
+					level.Warn(p.logger).Log("msg", "tag_alias_is_valid", "tag", tag, "aliasTag", aliasTag)
+					continue
+				}
+				group.Labels[aliasTag] = value
+				continue
+			}
+
+			if !tag.IsValid() {
+				level.Warn(p.logger).Log("msg", "tag_is_valid", "tag", tag)
+				continue
+			}
+			group.Labels[tag] = value
 		}
 
 		serverExists[key] = group
@@ -203,7 +230,14 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	for i := range serverExists {
 		result = append(result, serverExists[i])
 	}
-	// level.Debug(p.logger).Log("msg", "Mysql discovery", "result", result)
 
 	return result, nil
+}
+
+func (p *Discovery) tagAlias(key string) model.LabelName {
+	if p.cfg.TagAlias == nil {
+		return model.LabelName(key)
+	}
+
+	return model.LabelName(p.cfg.TagAlias[key])
 }
