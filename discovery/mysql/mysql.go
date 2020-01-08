@@ -39,8 +39,15 @@
 //             timeout: 5s
 //       refresh_interval: 10s
 //       filter_conditions:
-//         "CONTACT": ["huanghonghu"]
-//         "USE_STATUS": ["上线"]
+//         - key: "CLUSTER_NAME"
+// 	 	     values: ["%haha%", "jdw"]
+// 	 	     operator: like # =, like, in
+//         - key: "USE_STATUS"
+// 	 	     values: ["过保", "上线"]
+// 	 	     operator: =
+//         - key: "CONTACT"
+// 	 	     values: ["huanghonghu"]
+// 	 	     operator: in
 //       tag_alias:
 //         "在线状态": "online_status"
 //         "服务器类型": "sever_type"
