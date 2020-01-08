@@ -44,7 +44,6 @@ type TKmServers struct {
 	Tag                string           `xorm:"VARCHAR(256)"`
 	Model              string           `xorm:"VARCHAR(200)"`
 	Attribution        model.LabelValue `xorm:"VARCHAR(200)"`
-	Ascription         string           `xorm:"VARCHAR(200)"`
 
 	tagMaps model.LabelSet `xorm:"-"`
 }

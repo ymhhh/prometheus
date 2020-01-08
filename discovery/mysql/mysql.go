@@ -39,8 +39,15 @@
 //             timeout: 5s
 //       refresh_interval: 10s
 //       filter_conditions:
-//         "CONTACT": ["huanghonghu"]
-//         "USE_STATUS": ["上线"]
+//         - key: "CLUSTER_NAME"
+// 	 	     values: ["%haha%", "jdw"]
+// 	 	     operator: like # =, like, in
+//         - key: "USE_STATUS"
+// 	 	     values: ["过保", "上线"]
+// 	 	     operator: =
+//         - key: "CONTACT"
+// 	 	     values: ["huanghonghu"]
+// 	 	     operator: in
 //       tag_alias:
 //         "在线状态": "online_status"
 //         "服务器类型": "sever_type"
@@ -61,6 +68,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -85,10 +93,26 @@ var (
 type SDConfig struct {
 	DBConfig         map[string]interface{} `yaml:"database,omitempty"`
 	RefreshInterval  model.Duration         `yaml:"refresh_interval,omitempty"`
-	FilterConditions map[string][]string    `yaml:"filter_conditions,omitempty"`
+	FilterConditions []FilterCondition      `yaml:"filter_conditions,omitempty"`
 
 	TagAlias map[string]string `yaml:"tag_alias,omitempty"`
 }
+
+// FilterCondition 过滤器
+type FilterCondition struct {
+	Key      string   `yaml:"key,omitempty"`
+	Values   []string `yaml:"values,omitempty"`
+	Operator string   `yaml:"operator,omitempty"`
+}
+
+const (
+	// FilterConditionEqual 数据库等于操作
+	FilterConditionEqual = "="
+	// FilterConditionLike 数据库Like操作
+	FilterConditionLike = "like"
+	// FilterConditionIn 数据库in操作
+	FilterConditionIn = "in"
+)
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -100,6 +124,17 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	if len(c.DBConfig) == 0 {
 		return errors.New("mysql discovery config must contain at least one path name")
+	}
+
+	for _, v := range c.FilterConditions {
+		if len(v.Key) == 0 || len(v.Values) == 0 {
+			return errors.New("mysql discovery config: filter condition's key or values should not be empty")
+		}
+		switch v.Operator {
+		case FilterConditionEqual, FilterConditionLike, FilterConditionIn:
+		default:
+			return errors.New("mysql discovery config: filter condition operator must: 'eq' or 'like' or 'in'")
+		}
 	}
 	return nil
 }
@@ -151,12 +186,22 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 
 	session := p.engine.NewSession()
 	defer session.Close()
-	for k, v := range p.cfg.FilterConditions {
-		session = session.In(k, v)
-	}
 
 	date := time.Now().Format("2006-01-02")
 	session = session.Where("`CREATE_DATE` = ?", date)
+	for _, v := range p.cfg.FilterConditions {
+		switch v.Operator {
+		case FilterConditionIn:
+			session = session.In(v.Key, v.Values)
+		case FilterConditionEqual, FilterConditionLike:
+			var wheres []string
+			for _, cv := range v.Values {
+				wheres = append(wheres, fmt.Sprintf("`%s` %s '%s'", v.Key, v.Operator, cv))
+			}
+
+			session = session.And(strings.Join(wheres, " or "))
+		}
+	}
 
 	var data []TKmServers
 	if err := session.Find(&data); err != nil {
