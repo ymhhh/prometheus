@@ -28,13 +28,13 @@ type TKmServers struct {
 	ProductLine        string           `xorm:"'PRODUCT_LINE' VARCHAR(12)"`
 	MachineRoom        model.LabelValue `xorm:"'MACHINE_ROOM' VARCHAR(100)"`
 	UseStatus          model.LabelValue `xorm:"'USE_STATUS' VARCHAR(100)"`
-	Cabinet            string           `xorm:"'CABINET' VARCHAR(100)"`
+	Cabinet            model.LabelValue `xorm:"'CABINET' VARCHAR(100)"`
 	Fzr                model.LabelValue `xorm:"'FZR' VARCHAR(100)"`
 	Contact            string           `xorm:"'CONTACT' CHAR(255)"`
 	CPU                string           `xorm:"'CPU' VARCHAR(100)"`
 	Memory             string           `xorm:"'MEMORY' VARCHAR(100)"`
 	Disk               string           `xorm:"'DISK' VARCHAR(100)"`
-	Vendor             string           `xorm:"'VENDOR' VARCHAR(100)"`
+	Vendor             model.LabelValue `xorm:"'VENDOR' VARCHAR(100)"`
 	CreateTime         int64            `xorm:"'CREATE_TIME' BIGINT(20)"`
 	OnlineTime         int64            `xorm:"'ONLINE_TIME' BIGINT(20)"`
 	WarrantyTime       int64            `xorm:"'WARRANTY_TIME' BIGINT(20)"`
@@ -42,7 +42,7 @@ type TKmServers struct {
 	ClusterName        model.LabelValue `xorm:"'CLUSTER_NAME' VARCHAR(500)"`
 	DeploymentServices model.LabelValue `xorm:"'DEPLOYMENT_SERVICES' VARCHAR(100)"`
 	Tag                string           `xorm:"VARCHAR(256)"`
-	Model              string           `xorm:"VARCHAR(200)"`
+	Model              model.LabelValue `xorm:"VARCHAR(200)"`
 	Attribution        model.LabelValue `xorm:"VARCHAR(200)"`
 
 	tagMaps model.LabelSet `xorm:"-"`

@@ -229,23 +229,17 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 
 		group.Labels = model.LabelSet{}
 
-		if len(server.Attribution) > 0 {
-			group.Labels["attribution"] = server.Attribution
+		if len(server.Model) > 0 {
+			group.Labels["model"] = server.Model
 		}
-		if len(server.ClusterName) > 0 {
-			group.Labels["cluster"] = server.ClusterName
-		}
-		if len(server.UseStatus) > 0 {
-			group.Labels["use_status"] = server.UseStatus
-		}
-		if len(server.DeploymentServices) > 0 {
-			group.Labels["deployment_services"] = server.DeploymentServices
+		if len(server.Vendor) > 0 {
+			group.Labels["vendor"] = server.Vendor
 		}
 		if len(server.MachineRoom) > 0 {
 			group.Labels["machine_room"] = server.MachineRoom
 		}
-		if len(server.Fzr) > 0 {
-			group.Labels["fzr"] = server.Fzr
+		if len(server.Cabinet) > 0 {
+			group.Labels["cabinet"] = server.Cabinet
 		}
 
 		for tag, value := range server.tagMaps {
