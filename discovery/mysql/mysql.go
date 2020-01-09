@@ -19,6 +19,7 @@
 //   honor_labels: true
 //   honor_timestamps: true
 //   mysql_sd_configs:
+//     node_exporter_port: 9101
 //     - database:
 //         mysql:
 //           ## database name
@@ -94,8 +95,8 @@ type SDConfig struct {
 	DBConfig         map[string]interface{} `yaml:"database,omitempty"`
 	RefreshInterval  model.Duration         `yaml:"refresh_interval,omitempty"`
 	FilterConditions []FilterCondition      `yaml:"filter_conditions,omitempty"`
-
-	TagAlias map[string]string `yaml:"tag_alias,omitempty"`
+	ServerPort       int                    `yaml:"server_port,omitempty"`
+	TagAlias         map[string]string      `yaml:"tag_alias,omitempty"`
 }
 
 // FilterCondition 过滤器
@@ -135,6 +136,10 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		default:
 			return errors.New("mysql discovery config: filter condition operator must: 'eq' or 'like' or 'in'")
 		}
+	}
+
+	if (c.ServerPort) == 0 {
+		c.ServerPort = 9100
 	}
 	return nil
 }
@@ -223,9 +228,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		}
 
 		group.Targets = append(group.Targets,
-			model.LabelSet{
-				model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:9100", server.IP)),
-			})
+			model.LabelSet{model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:%d", server.IP, p.cfg.ServerPort))})
 
 		group.Labels = model.LabelSet{}
 
@@ -244,11 +247,12 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 
 		for tag, value := range server.tagMaps {
 			aliasTag := p.tagAlias(string(tag))
-			level.Debug(p.logger).Log("msg", "tag_alias", "tag", tag, "aliasTag", aliasTag)
+			level.Debug(p.logger).Log("msg", "tag_alias", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
 
 			if len(aliasTag) != 0 {
 				if !aliasTag.IsValid() {
-					level.Warn(p.logger).Log("msg", "tag_alias_is_valid", "tag", tag, "aliasTag", aliasTag)
+					level.Warn(p.logger).Log(
+						"msg", "tag_alias_is_valid", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
 					continue
 				}
 				group.Labels[aliasTag] = value
@@ -256,7 +260,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			}
 
 			if !tag.IsValid() {
-				level.Warn(p.logger).Log("msg", "tag_is_valid", "tag", tag)
+				level.Warn(p.logger).Log("msg", "tag_is_valid", "ip", server.IP, "tag", tag)
 				continue
 			}
 			group.Labels[tag] = value
