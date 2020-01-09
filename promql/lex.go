@@ -456,28 +456,7 @@ func lexStatements(l *lexer) stateFn {
 		return lexLineComment
 	}
 
-	r := l.next()
-	isD := false
-	if isDigit(r) {
-		tl := lexer{
-			input: l.input,
-			state: l.state,
-			pos:   l.pos,
-			start: l.start,
-			width: l.width,
-			//lastPos: l.lastPos,
-			items:       l.items,
-			parenDepth:  l.parenDepth,
-			braceOpen:   l.braceOpen,
-			bracketOpen: l.bracketOpen,
-			gotColon:    l.gotColon,
-			stringOpen:  l.stringOpen,
-			seriesDesc:  l.seriesDesc,
-		}
-		isD = checkLexNumberOrDuration(&tl)
-	}
-
-	switch {
+	switch r := l.next(); {
 	case r == eof:
 		if l.parenDepth != 0 {
 			return l.errorf("unclosed left parenthesis")
@@ -531,8 +510,7 @@ func lexStatements(l *lexer) stateFn {
 		} else {
 			l.emit(ItemGTR)
 		}
-	//case isDigit(r) || (r == '.' && isDigit(l.peek())):
-	case isD || r == '.' && isDigit(l.peek()):
+	case isDigit(r) || (r == '.' && isDigit(l.peek())):
 		l.backup()
 		return lexNumberOrDuration
 	case r == '"' || r == '\'':
@@ -541,8 +519,7 @@ func lexStatements(l *lexer) stateFn {
 	case r == '`':
 		l.stringOpen = r
 		return lexRawString
-	//case isAlpha(r) || r == ':':
-	case isAlphaNumeric(r) || r == ':':
+	case isAlpha(r) || r == ':':
 		if !l.bracketOpen {
 			l.backup()
 			return lexKeywordOrIdentifier
@@ -600,8 +577,7 @@ func lexInsideBraces(l *lexer) stateFn {
 		return l.errorf("unexpected end of input inside braces")
 	case isSpace(r):
 		return lexSpace
-	//case isAlpha(r):
-	case isAlphaNumeric(r):
+	case isAlpha(r):
 		l.backup()
 		return lexIdentifier
 	case r == ',':
@@ -818,16 +794,6 @@ func lexNumber(l *lexer) stateFn {
 	}
 	l.emit(ItemNumber)
 	return lexStatements
-}
-
-// checkLexNumberOrDuration check scans a number or a duration item.
-func checkLexNumberOrDuration(l *lexer) bool {
-	l.backup()
-	if l.scanNumber() || (l.accept("smhdwy") && !isAlphaNumeric(l.next())) {
-		return true
-	}
-
-	return false
 }
 
 // lexNumberOrDuration scans a number or a duration item.

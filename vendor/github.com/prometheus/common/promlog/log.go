@@ -30,7 +30,7 @@ var (
 	// of .999999999 which changes the timestamp from 9 variable to 3 fixed
 	// decimals (.130 instead of .130987456).
 	timestampFormat = log.TimestampFormat(
-		func() time.Time { return time.Now() },
+		func() time.Time { return time.Now().UTC() },
 		"2006-01-02T15:04:05.000Z07:00",
 	)
 )

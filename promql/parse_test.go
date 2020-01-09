@@ -184,13 +184,11 @@ var testExpr = []struct {
 		input:  "100..4",
 		fail:   true,
 		errMsg: "could not parse remaining input \".4\"...",
-	},
-	//{
-	//	input:  "0deadbeef",
-	//	fail:   true,
-	//	errMsg: "bad number or duration syntax: \"0de\"",
-	//},
-	{
+	}, {
+		input:  "0deadbeef",
+		fail:   true,
+		errMsg: "bad number or duration syntax: \"0de\"",
+	}, {
 		input:  "1 /",
 		fail:   true,
 		errMsg: "no valid expression found",
@@ -916,13 +914,11 @@ var testExpr = []struct {
 		input:  `foo{gibberish}`,
 		fail:   true,
 		errMsg: "expected label matching operator but got }",
-	},
-	//{
-	//	input:  `foo{1}`,
-	//	fail:   true,
-	//	errMsg: "unexpected character inside braces: '1'",
-	//},
-	{
+	}, {
+		input:  `foo{1}`,
+		fail:   true,
+		errMsg: "unexpected character inside braces: '1'",
+	}, {
 		input:  `{}`,
 		fail:   true,
 		errMsg: "vector selector must contain label matchers or metric name",
@@ -1021,13 +1017,11 @@ var testExpr = []struct {
 		input:  `foo[5m30s]`,
 		fail:   true,
 		errMsg: "bad duration syntax: \"5m3\"",
-	},
-	//{
-	//	input:  `foo[5m] OFFSET 1h30m`,
-	//	fail:   true,
-	//	errMsg: "bad number or duration syntax: \"1h3\"",
-	//},
-	{
+	}, {
+		input:  `foo[5m] OFFSET 1h30m`,
+		fail:   true,
+		errMsg: "bad number or duration syntax: \"1h3\"",
+	}, {
 		input: `foo["5m"]`,
 		fail:  true,
 	}, {
@@ -1042,13 +1036,11 @@ var testExpr = []struct {
 		input:  `some_metric[5m] OFFSET 1`,
 		fail:   true,
 		errMsg: "unexpected number \"1\" in offset, expected duration",
-	},
-	//{
-	//	input:  `some_metric[5m] OFFSET 1mm`,
-	//	fail:   true,
-	//	errMsg: "bad number or duration syntax: \"1mm\"",
-	//},
-	{
+	}, {
+		input:  `some_metric[5m] OFFSET 1mm`,
+		fail:   true,
+		errMsg: "bad number or duration syntax: \"1mm\"",
+	}, {
 		input:  `some_metric[5m] OFFSET`,
 		fail:   true,
 		errMsg: "unexpected end of input in offset, expected duration",
