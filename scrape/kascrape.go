@@ -26,15 +26,10 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util"
 	"github.com/xdg/scram"
 	"hash"
-	"io"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -165,8 +160,30 @@ func (sp *kaScrapePool) run(t *Target) {
 		honorTimestamps: sp.config.HonorTimestamps,
 		mrc:             mrc,
 	}
+
+	// 复用scrapeLoop里的函数
+	app := func() storage.Appender {
+		ad, err := sp.appendable.Appender()
+		if err != nil {
+			panic(err)
+		}
+		return appender(ad, 0)
+	}
 	sm := func(l labels.Labels) labels.Labels {
 		return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
+	}
+	rsm := func(l labels.Labels) labels.Labels {
+		return mutateReportSampleLabels(l, opts.target)
+	}
+	sl := &scrapeLoop{
+		scraper:             &targetScraper{Target: t},
+		buffers:             nil,
+		cache:               ca,
+		appender:            app,
+		sampleMutator:       sm,
+		reportSampleMutator: rsm,
+		l:                   sp.logger,
+		honorTimestamps:     sp.config.HonorTimestamps,
 	}
 
 	var err error
@@ -185,7 +202,7 @@ LOOP:
 				}
 			}
 			start := time.Now()
-			_, _, _, appErr := sp.append([]byte(msg), "", start, ca, sm)
+			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
 				level.Warn(sp.logger).Log("msg", "append failed", "err", appErr)
 				// The append failed, probably due to a parse error or sample limit.
@@ -194,6 +211,11 @@ LOOP:
 				//	level.Warn(kh.logger).Log("msg", "append failed", "err", err)
 				//}
 			}
+
+			if err := sl.report(start, time.Since(start), total, added, seriesAdded, nil); err != nil {
+				level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
+			}
+
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
 			<-time.After(5 * time.Second)
@@ -377,196 +399,6 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 	}
 
 	return buf.String(), nil
-}
-
-// append add message to TSDB
-func (sp *kaScrapePool) append(b []byte, contentType string, ts time.Time, ca *scrapeCache, sm func(l labels.Labels) labels.Labels) (total, added, seriesAdded int, err error) {
-	var (
-		//app            = sl.appender()
-		app = func() storage.Appender {
-			ad, err := sp.appendable.Appender()
-			if err != nil {
-				panic(err)
-			}
-			return appender(ad, 0)
-		}()
-		p              = textparse.New(b, contentType)
-		defTime        = timestamp.FromTime(ts)
-		numOutOfOrder  = 0
-		numDuplicates  = 0
-		numOutOfBounds = 0
-	)
-
-	var sampleLimitErr error
-
-loop:
-	for {
-		var et textparse.Entry
-		if et, err = p.Next(); err != nil {
-			if err == io.EOF {
-				err = nil
-			}
-			break
-		}
-		switch et {
-		case textparse.EntryType:
-			ca.setType(p.Type())
-			continue
-		case textparse.EntryHelp:
-			ca.setHelp(p.Help())
-			continue
-		case textparse.EntryUnit:
-			ca.setUnit(p.Unit())
-			continue
-		case textparse.EntryComment:
-			continue
-		default:
-		}
-		total++
-
-		t := defTime
-		met, tp, v := p.Series()
-		if !sp.config.HonorTimestamps {
-			tp = nil
-		}
-		if tp != nil {
-			t = *tp
-		}
-
-		if ca.getDropped(yoloString(met)) {
-			continue
-		}
-		ce, ok := ca.get(yoloString(met))
-		if ok {
-			switch err = app.AddFast(ce.lset, ce.ref, t, v); err {
-			case nil:
-				if tp == nil {
-					ca.trackStaleness(ce.hash, ce.lset)
-				}
-			case storage.ErrNotFound:
-				ok = false
-			case storage.ErrOutOfOrderSample:
-				numOutOfOrder++
-				level.Debug(sp.logger).Log("msg", "Out of order sample", "series", string(met))
-				targetScrapeSampleOutOfOrder.Inc()
-				continue
-			case storage.ErrDuplicateSampleForTimestamp:
-				numDuplicates++
-				level.Debug(sp.logger).Log("msg", "Duplicate sample for timestamp", "series", string(met))
-				targetScrapeSampleDuplicate.Inc()
-				continue
-			case storage.ErrOutOfBounds:
-				numOutOfBounds++
-				level.Debug(sp.logger).Log("msg", "Out of bounds metric", "series", string(met))
-				targetScrapeSampleOutOfBounds.Inc()
-				continue
-			case errSampleLimit:
-				// Keep on parsing output if we hit the limit, so we report the correct
-				// total number of samples scraped.
-				sampleLimitErr = err
-				added++
-				continue
-			default:
-				break loop
-			}
-		}
-		if !ok {
-			var lset labels.Labels
-
-			mets := p.Metric(&lset)
-			hash := lset.Hash()
-
-			// Hash label set as it is seen local to the target. Then add target labels
-			// and relabeling and store the final label set.
-			lset = sm(lset)
-
-			// The label set may be set to nil to indicate dropping.
-			if lset == nil {
-				ca.addDropped(mets)
-				continue
-			}
-
-			var ref uint64
-			ref, err = app.Add(lset, t, v)
-			switch err {
-			case nil:
-			case storage.ErrOutOfOrderSample:
-				err = nil
-				numOutOfOrder++
-				level.Debug(sp.logger).Log("msg", "Out of order sample", "series", string(met))
-				targetScrapeSampleOutOfOrder.Inc()
-				continue
-			case storage.ErrDuplicateSampleForTimestamp:
-				err = nil
-				numDuplicates++
-				level.Debug(sp.logger).Log("msg", "Duplicate sample for timestamp", "series", string(met))
-				targetScrapeSampleDuplicate.Inc()
-				continue
-			case storage.ErrOutOfBounds:
-				err = nil
-				numOutOfBounds++
-				level.Debug(sp.logger).Log("msg", "Out of bounds metric", "series", string(met))
-				targetScrapeSampleOutOfBounds.Inc()
-				continue
-			case errSampleLimit:
-				sampleLimitErr = err
-				added++
-				continue
-			default:
-				level.Debug(sp.logger).Log("msg", "unexpected error", "series", string(met), "err", err)
-				break loop
-			}
-			if tp == nil {
-				// Bypass staleness logic if there is an explicit timestamp.
-				ca.trackStaleness(hash, lset)
-			}
-			ca.addRef(mets, ref, lset, hash)
-			seriesAdded++
-		}
-		added++
-	}
-	if sampleLimitErr != nil {
-		if err == nil {
-			err = sampleLimitErr
-		}
-		// We only want to increment this once per scrape, so this is Inc'd outside the loop.
-		targetScrapeSampleLimit.Inc()
-	}
-	if numOutOfOrder > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting out-of-order samples", "num_dropped", numOutOfOrder)
-	}
-	if numDuplicates > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting samples with different value but same timestamp", "num_dropped", numDuplicates)
-	}
-	if numOutOfBounds > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting samples that are too old or are too far into the future", "num_dropped", numOutOfBounds)
-	}
-	if err == nil {
-		ca.forEachStale(func(lset labels.Labels) bool {
-			// Series no longer exposed, mark it stale.
-			_, err = app.Add(lset, defTime, math.Float64frombits(value.StaleNaN))
-			switch err {
-			case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
-				// Do not count these in logging, as this is expected if a target
-				// goes away and comes back again with a new scrape loop.
-				err = nil
-			}
-			return err == nil
-		})
-	}
-	if err != nil {
-		app.Rollback()
-		return total, added, seriesAdded, err
-	}
-	if err := app.Commit(); err != nil {
-		return total, added, seriesAdded, err
-	}
-
-	// Only perform cache cleaning if the scrape was not empty.
-	// An empty scrape (usually) is used to indicate a failed scrape.
-	ca.iterDone(len(b) > 0)
-
-	return total, added, seriesAdded, nil
 }
 
 // Sync converts target groups into actual scrape targets and synchronizes
