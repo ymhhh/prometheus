@@ -202,7 +202,7 @@ LOOP:
 				}
 			}
 			start := time.Now()
-			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
+			_, _, _, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
 				level.Warn(sp.logger).Log("msg", "append failed", "err", appErr)
 				// The append failed, probably due to a parse error or sample limit.
@@ -212,9 +212,9 @@ LOOP:
 				//}
 			}
 
-			if err := sl.report(start, time.Since(start), total, added, seriesAdded, nil); err != nil {
-				level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
-			}
+			//if err := sl.report(start, time.Since(start), total, added, seriesAdded, nil); err != nil {
+			//	level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
+			//}
 
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
