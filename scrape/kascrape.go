@@ -272,10 +272,11 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 
 	start := func() {
 		for {
-			if sp.getCurNum() >= sp.maxGoNums {
+			curNum := sp.getCurNum()
+			level.Info(sp.logger).Log("curGoNum", curNum, "maxGoNum", sp.maxGoNums)
+			if curNum >= sp.maxGoNums {
 				break
 			}
-			level.Info(sp.logger).Log("curGoNum", sp.getCurNum(), "maxGoNum", sp.maxGoNums)
 
 			sp.incCurNum()
 			sp.wg.Add(1)
