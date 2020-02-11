@@ -16,7 +16,6 @@ package opentsdb
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,20 +41,6 @@ const (
 	queryEndpoint   = "/api/query"
 	contentTypeJSON = "application/json"
 )
-
-func getDefaultTransport() *http.Transport {
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		//Dial: (&net.Dialer{
-		//	Timeout:   30 * time.Second,
-		//	KeepAlive: 30 * time.Second,
-		//}).Dial,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-}
 
 // Client allows sending batches of Prometheus samples to OpenTSDB.
 type Client struct {
