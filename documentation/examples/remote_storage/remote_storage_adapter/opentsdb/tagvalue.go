@@ -180,4 +180,3 @@ func toTagValue(tv string) string {
 	}
 	return result.String()
 }
-
