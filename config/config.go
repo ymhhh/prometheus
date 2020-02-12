@@ -412,6 +412,7 @@ type ScrapeConfig struct {
 	MetricRelabelConfigs []*relabel.Config `yaml:"metric_relabel_configs,omitempty"`
 	KaConfig             KaConfig          `yaml:"ka_config"`
 	MaxGoNum             int               `yaml:"max_go_num,omitempty"`
+	MaxRecNum            int               `yaml:"max_rec_num,omitempty"`
 	MsgType              string            `yaml:"msg_type,omitempty"`
 	MsgLabel             []string          `yaml:"msg_label,omitempty"`
 }

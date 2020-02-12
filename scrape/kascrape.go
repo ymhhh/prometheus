@@ -90,6 +90,11 @@ type kaScrapePool struct {
 	kaCtx    context.Context
 	kaCancel context.CancelFunc
 	message  chan string
+
+	lockCnt   sync.Mutex
+	totalCnt  int // 目标暴露的样本数(scrape_samples_scraped)
+	addedCnt  int // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
+	seriesCnt int // 该刮擦中新系列的大致数量(scrape_series_added)
 }
 
 func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
@@ -111,6 +116,9 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		isChange:   true,
 		message:    make(chan string, msgLen),
 		logger:     logger,
+		totalCnt:   0,
+		addedCnt:   0,
+		seriesCnt:  0,
 	}
 
 	if cfg.MsgType == "MSG_T_JSON" && len(cfg.MsgLabel) == 0 {
@@ -202,19 +210,11 @@ LOOP:
 				}
 			}
 			start := time.Now()
-			_, _, _, appErr := sl.append([]byte(msg), "", start)
+			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
 				level.Warn(sp.logger).Log("msg", "append failed", "err", appErr)
-				// The append failed, probably due to a parse error or sample limit.
-				// Call sl.append again with an empty scrape to trigger stale markers.
-				//if _, _, _, err := kh.append(message.Value, "", start); err != nil {
-				//	level.Warn(kh.logger).Log("msg", "append failed", "err", err)
-				//}
 			}
-
-			//if err := sl.report(start, time.Since(start), total, added, seriesAdded, nil); err != nil {
-			//	level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
-			//}
+			sp.report(total, added, seriesAdded, false)
 
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
@@ -230,6 +230,7 @@ LOOP:
 func (sp *kaScrapePool) stop() {
 	sp.kaCancel()
 	close(sp.isStop)
+	sp.report(0, 0, sp.config.MaxRecNum, true)
 	sp.wg.Wait()
 }
 
@@ -424,6 +425,27 @@ func (sp *kaScrapePool) Sync(tgs []*targetgroup.Group) {
 	}
 
 	go sp.loop(all)
+}
+
+// report save the count of scrape metric.
+func (sp *kaScrapePool) report(totalCnt, addedCnt, seriesCnt int, isSave bool) {
+	if sp.config.MaxRecNum == 0 {
+		return
+	}
+
+	sp.lockCnt.Lock()
+	defer sp.lockCnt.Unlock()
+
+	sp.totalCnt += totalCnt
+	sp.addedCnt += addedCnt
+	sp.seriesCnt += seriesCnt
+
+	if isSave || sp.totalCnt >= sp.config.MaxRecNum || sp.addedCnt >= sp.config.MaxRecNum || sp.seriesCnt >= sp.config.MaxRecNum {
+		level.Info(sp.logger).Log("msg", "scrapt records", "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
+		sp.totalCnt = 0
+		sp.addedCnt = 0
+		sp.seriesCnt = 0
+	}
 }
 
 // GetChanged return isChanged
