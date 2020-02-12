@@ -381,7 +381,7 @@ func report(logger log.Logger, allCnt, sucCnt int, isSave bool) {
 	curDate := time.Now().Format("2006010215")
 
 	if isSave || gDateCnt != curDate {
-		level.Info(logger).Log("msg", "storage records", "totalCnt", gAllCnt, "sucCnt", gSucCnt, "errCnt", gAllCnt-gSucCnt)
+		level.Info(logger).Log("msg", "storage records", "dateCnt", gDateCnt, "totalCnt", gAllCnt, "sucCnt", gSucCnt, "errCnt", gAllCnt-gSucCnt)
 		gAllCnt = 0
 		gSucCnt = 0
 		gDateCnt = curDate
