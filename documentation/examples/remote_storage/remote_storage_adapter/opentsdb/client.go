@@ -88,7 +88,7 @@ func tagsFromMetric(m model.Metric) map[string]TagValue {
 }
 
 // Write sends a batch of samples to OpenTSDB via its HTTP API.
-func (c *Client) Write(samples model.Samples) error {
+func (c *Client) Write(samples model.Samples) (int, error) {
 	reqs := make([]StoreSamplesRequest, 0, len(samples))
 	for _, s := range samples {
 		v := float64(s.Value)
@@ -107,7 +107,7 @@ func (c *Client) Write(samples model.Samples) error {
 
 	buf, err := json.Marshal(reqs)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -115,12 +115,12 @@ func (c *Client) Write(samples model.Samples) error {
 
 	req, err := http.NewRequest("POST", c.writeUrl, bytes.NewBuffer(buf))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", contentTypeJSON)
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() {
 		io.Copy(ioutil.Discard, resp.Body)
@@ -130,21 +130,21 @@ func (c *Client) Write(samples model.Samples) error {
 	// API returns status code 204 for successful writes.
 	// http://opentsdb.net/docs/build/html/api_http/put.html
 	if resp.StatusCode == http.StatusNoContent {
-		return nil
+		return len(samples), nil
 	}
 
 	// API returns status code 400 on error, encoding error details in the
 	// response content in JSON.
 	buf, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var r map[string]int
 	if err := json.Unmarshal(buf, &r); err != nil {
-		return err
+		return 0, err
 	}
-	return errors.Errorf("failed to write %d samples to OpenTSDB, %d succeeded", r["failed"], r["success"])
+	return r["success"], errors.Errorf("failed to write %d samples to OpenTSDB, %d succeeded", r["failed"], r["success"])
 }
 
 // Name identifies the client as an OpenTSDB client.

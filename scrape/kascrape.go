@@ -90,6 +90,12 @@ type kaScrapePool struct {
 	kaCtx    context.Context
 	kaCancel context.CancelFunc
 	message  chan string
+
+	lockCnt   sync.Mutex
+	dateCnt   string
+	totalCnt  int64 // 目标暴露的样本数(scrape_samples_scraped)
+	addedCnt  int64 // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
+	seriesCnt int64 // 该刮擦中新系列的大致数量(scrape_series_added)
 }
 
 func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
@@ -111,6 +117,10 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		isChange:   true,
 		message:    make(chan string, msgLen),
 		logger:     logger,
+		dateCnt:    time.Now().Format("2006010215"),
+		totalCnt:   0,
+		addedCnt:   0,
+		seriesCnt:  0,
 	}
 
 	if cfg.MsgType == "MSG_T_JSON" && len(cfg.MsgLabel) == 0 {
@@ -202,19 +212,11 @@ LOOP:
 				}
 			}
 			start := time.Now()
-			_, _, _, appErr := sl.append([]byte(msg), "", start)
+			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
 				level.Warn(sp.logger).Log("msg", "append failed", "err", appErr)
-				// The append failed, probably due to a parse error or sample limit.
-				// Call sl.append again with an empty scrape to trigger stale markers.
-				//if _, _, _, err := kh.append(message.Value, "", start); err != nil {
-				//	level.Warn(kh.logger).Log("msg", "append failed", "err", err)
-				//}
 			}
-
-			//if err := sl.report(start, time.Since(start), total, added, seriesAdded, nil); err != nil {
-			//	level.Warn(sl.l).Log("msg", "appending scrape report failed", "err", err)
-			//}
+			sp.report(total, added, seriesAdded, false)
 
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
@@ -230,6 +232,7 @@ LOOP:
 func (sp *kaScrapePool) stop() {
 	sp.kaCancel()
 	close(sp.isStop)
+	sp.report(0, 0, 0, true)
 	sp.wg.Wait()
 }
 
@@ -424,6 +427,25 @@ func (sp *kaScrapePool) Sync(tgs []*targetgroup.Group) {
 	}
 
 	go sp.loop(all)
+}
+
+// report save the count of scrape metric.
+func (sp *kaScrapePool) report(totalCnt, addedCnt, seriesCnt int, isSave bool) {
+	sp.lockCnt.Lock()
+	defer sp.lockCnt.Unlock()
+
+	sp.totalCnt += int64(totalCnt)
+	sp.addedCnt += int64(addedCnt)
+	sp.seriesCnt += int64(seriesCnt)
+	curDate := time.Now().Format("2006010215")
+
+	if isSave || sp.dateCnt != curDate {
+		level.Info(sp.logger).Log("msg", "scrapt records", "dateCnt", sp.dateCnt, "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
+		sp.totalCnt = 0
+		sp.addedCnt = 0
+		sp.seriesCnt = 0
+		sp.dateCnt = curDate
+	}
 }
 
 // GetChanged return isChanged

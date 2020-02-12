@@ -80,10 +80,10 @@ func pathFromMetric(m model.Metric, prefix string) string {
 }
 
 // Write sends a batch of samples to Graphite.
-func (c *Client) Write(samples model.Samples) error {
+func (c *Client) Write(samples model.Samples) (int, error) {
 	conn, err := net.DialTimeout(c.transport, c.address, c.timeout)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer conn.Close()
 
@@ -100,7 +100,10 @@ func (c *Client) Write(samples model.Samples) error {
 	}
 
 	_, err = conn.Write(buf.Bytes())
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return len(samples), nil
 }
 
 // Name identifies the client as a Graphite client.
