@@ -63,7 +63,6 @@ type config struct {
 	listenAddr              string
 	telemetryPath           string
 	promlogConfig           promlog.Config
-	maxRecNum               int
 }
 
 var (
@@ -97,8 +96,9 @@ var (
 	)
 
 	gLockCnt sync.Mutex
-	gAllCnt  int // 总数
-	gSucCnt  int // 成功数
+	gDateCnt = time.Now().Format("2006010215")
+	gAllCnt  int64 // 总数
+	gSucCnt  int64 // 成功数
 )
 
 func init() {
@@ -115,11 +115,11 @@ func main() {
 	logger := promlog.New(&cfg.promlogConfig)
 
 	writers, readers := buildClients(logger, cfg)
-	if err := serve(logger, cfg.listenAddr, cfg.maxRecNum, writers, readers); err != nil {
+	if err := serve(logger, cfg.listenAddr, writers, readers); err != nil {
 		level.Error(logger).Log("msg", "Failed to listen", "addr", cfg.listenAddr, "err", err)
 	}
 
-	report(logger, 0, 0, cfg.maxRecNum, true)
+	report(logger, 0, 0, true)
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
@@ -154,8 +154,6 @@ func parseFlags() *config {
 		Default(":9201").StringVar(&cfg.listenAddr)
 	a.Flag("web.telemetry-path", "Address to listen on for web endpoints.").
 		Default("/metrics").StringVar(&cfg.telemetryPath)
-	a.Flag("max_rec_num", "Record the maximum value of statistical log.").
-		Default("0").IntVar(&cfg.maxRecNum)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 
@@ -226,20 +224,18 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 
 // RemoteHandler handler
 type RemoteHandler struct {
-	addr      string
-	maxRecNum int
-	writers   []writer
-	readers   []reader
-	logger    log.Logger
+	addr    string
+	writers []writer
+	readers []reader
+	logger  log.Logger
 }
 
-func newRemoteHandler(logger log.Logger, addr string, maxRecNum int, writers []writer, readers []reader) *RemoteHandler {
+func newRemoteHandler(logger log.Logger, addr string, writers []writer, readers []reader) *RemoteHandler {
 	return &RemoteHandler{
-		addr:      addr,
-		maxRecNum: maxRecNum,
-		writers:   writers,
-		readers:   readers,
-		logger:    logger,
+		addr:    addr,
+		writers: writers,
+		readers: readers,
+		logger:  logger,
 	}
 }
 
@@ -273,7 +269,7 @@ func (h *RemoteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, w := range h.writers {
 			wg.Add(1)
 			go func(rw writer) {
-				sendSamples(h.logger, rw, samples, h.maxRecNum)
+				sendSamples(h.logger, rw, samples)
 				wg.Done()
 			}(w)
 		}
@@ -331,8 +327,8 @@ func (h *RemoteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func serve(logger log.Logger, addr string, maxRecNum int, writers []writer, readers []reader) error {
-	rHandler := newRemoteHandler(logger, addr, maxRecNum, writers, readers)
+func serve(logger log.Logger, addr string, writers []writer, readers []reader) error {
+	rHandler := newRemoteHandler(logger, addr, writers, readers)
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      rHandler,
@@ -362,11 +358,11 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 	return samples
 }
 
-func sendSamples(logger log.Logger, w writer, samples model.Samples, maxRecNum int) {
+func sendSamples(logger log.Logger, w writer, samples model.Samples) {
 	begin := time.Now()
 	sucCnt, err := w.Write(samples)
 	duration := time.Since(begin).Seconds()
-	report(logger, len(samples), sucCnt, maxRecNum, false)
+	report(logger, len(samples), sucCnt, false)
 	if err != nil {
 		level.Warn(logger).Log("msg", "Error sending samples to remote storage", "err", err, "storage", w.Name(), "num_samples", len(samples))
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
@@ -376,21 +372,19 @@ func sendSamples(logger log.Logger, w writer, samples model.Samples, maxRecNum i
 }
 
 // report save the count of scrape metric.
-func report(logger log.Logger, allCnt, sucCnt, maxRecNum int, isSave bool) {
-	if maxRecNum == 0 {
-		return
-	}
-
+func report(logger log.Logger, allCnt, sucCnt int, isSave bool) {
 	gLockCnt.Lock()
 	defer gLockCnt.Unlock()
 
-	gAllCnt += allCnt
-	gSucCnt += sucCnt
+	gAllCnt += int64(allCnt)
+	gSucCnt += int64(sucCnt)
+	curDate := time.Now().Format("2006010215")
 
-	if isSave || gAllCnt >= maxRecNum {
+	if isSave || gDateCnt != curDate {
 		level.Info(logger).Log("msg", "storage records", "totalCnt", gAllCnt, "sucCnt", gSucCnt, "errCnt", gAllCnt-gSucCnt)
 		gAllCnt = 0
 		gSucCnt = 0
+		gDateCnt = curDate
 	}
 }
 

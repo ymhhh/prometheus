@@ -92,9 +92,10 @@ type kaScrapePool struct {
 	message  chan string
 
 	lockCnt   sync.Mutex
-	totalCnt  int // 目标暴露的样本数(scrape_samples_scraped)
-	addedCnt  int // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
-	seriesCnt int // 该刮擦中新系列的大致数量(scrape_series_added)
+	dateCnt   string
+	totalCnt  int64 // 目标暴露的样本数(scrape_samples_scraped)
+	addedCnt  int64 // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
+	seriesCnt int64 // 该刮擦中新系列的大致数量(scrape_series_added)
 }
 
 func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
@@ -116,6 +117,7 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		isChange:   true,
 		message:    make(chan string, msgLen),
 		logger:     logger,
+		dateCnt:    time.Now().Format("2006010215"),
 		totalCnt:   0,
 		addedCnt:   0,
 		seriesCnt:  0,
@@ -230,7 +232,7 @@ LOOP:
 func (sp *kaScrapePool) stop() {
 	sp.kaCancel()
 	close(sp.isStop)
-	sp.report(0, 0, sp.config.MaxRecNum, true)
+	sp.report(0, 0, 0, true)
 	sp.wg.Wait()
 }
 
@@ -429,22 +431,20 @@ func (sp *kaScrapePool) Sync(tgs []*targetgroup.Group) {
 
 // report save the count of scrape metric.
 func (sp *kaScrapePool) report(totalCnt, addedCnt, seriesCnt int, isSave bool) {
-	if sp.config.MaxRecNum == 0 {
-		return
-	}
-
 	sp.lockCnt.Lock()
 	defer sp.lockCnt.Unlock()
 
-	sp.totalCnt += totalCnt
-	sp.addedCnt += addedCnt
-	sp.seriesCnt += seriesCnt
+	sp.totalCnt += int64(totalCnt)
+	sp.addedCnt += int64(addedCnt)
+	sp.seriesCnt += int64(seriesCnt)
+	curDate := time.Now().Format("2006010215")
 
-	if isSave || sp.totalCnt >= sp.config.MaxRecNum || sp.addedCnt >= sp.config.MaxRecNum || sp.seriesCnt >= sp.config.MaxRecNum {
+	if isSave || sp.dateCnt != curDate {
 		level.Info(sp.logger).Log("msg", "scrapt records", "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
 		sp.totalCnt = 0
 		sp.addedCnt = 0
 		sp.seriesCnt = 0
+		sp.dateCnt = curDate
 	}
 }
 
