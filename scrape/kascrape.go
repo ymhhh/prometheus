@@ -440,7 +440,7 @@ func (sp *kaScrapePool) report(totalCnt, addedCnt, seriesCnt int, isSave bool) {
 	curDate := time.Now().Format("2006010215")
 
 	if isSave || sp.dateCnt != curDate {
-		level.Info(sp.logger).Log("msg", "scrapt records", "dateCnt", sp.dateCnt, "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
+		level.Info(sp.logger).Log("msg", "scrape records", "dateCnt", sp.dateCnt, "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
 		sp.totalCnt = 0
 		sp.addedCnt = 0
 		sp.seriesCnt = 0
