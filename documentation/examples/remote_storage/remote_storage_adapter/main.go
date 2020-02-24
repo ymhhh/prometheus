@@ -53,7 +53,8 @@ type config struct {
 	graphiteAddress         string
 	graphiteTransport       string
 	graphitePrefix          string
-	opentsdbURL             string
+	opentsdbWURL            string
+	opentsdbRURL            string
 	influxdbURL             string
 	influxdbRetentionPolicy string
 	influxdbUsername        string
@@ -138,8 +139,10 @@ func parseFlags() *config {
 		Default("tcp").StringVar(&cfg.graphiteTransport)
 	a.Flag("graphite-prefix", "The prefix to prepend to all metrics exported to Graphite. None, if empty.").
 		Default("").StringVar(&cfg.graphitePrefix)
-	a.Flag("opentsdb-url", "The URL of the remote OpenTSDB server to send samples to. None, if empty.").
-		Default("").StringVar(&cfg.opentsdbURL)
+	a.Flag("opentsdb-wurl", "The URL of the remote OpenTSDB server to write samples to. None, if empty.").
+		Default("").StringVar(&cfg.opentsdbWURL)
+	a.Flag("opentsdb-rurl", "The URL of the remote OpenTSDB server to read samples to. None, if empty.").
+		Default("").StringVar(&cfg.opentsdbRURL)
 	a.Flag("influxdb-url", "The URL of the remote InfluxDB server to send samples to. None, if empty.").
 		Default("").StringVar(&cfg.influxdbURL)
 	a.Flag("influxdb.retention-policy", "The InfluxDB retention policy to use.").
@@ -187,10 +190,11 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 			cfg.remoteTimeout, cfg.graphitePrefix)
 		writers = append(writers, c)
 	}
-	if cfg.opentsdbURL != "" {
+	if cfg.opentsdbWURL != "" || cfg.opentsdbRURL != "" {
 		c := opentsdb.NewClient(
 			log.With(logger, "storage", "OpenTSDB"),
-			cfg.opentsdbURL,
+			cfg.opentsdbWURL,
+			cfg.opentsdbRURL,
 			cfg.remoteTimeout,
 		)
 		writers = append(writers, c)

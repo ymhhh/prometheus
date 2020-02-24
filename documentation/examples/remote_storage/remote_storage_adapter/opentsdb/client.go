@@ -51,18 +51,28 @@ type Client struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(logger log.Logger, openUrl string, timeout time.Duration) *Client {
+func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Duration) *Client {
 	c := Client{
 		logger:  logger,
 		timeout: timeout,
 	}
 
-	u, _ := url.Parse(openUrl)
+	if openWUrl == "" {
+		openWUrl = openRUrl
+	} else if openRUrl == "" {
+		openRUrl = openWUrl
+	}
+
+	// write url
+	u, _ := url.Parse(openWUrl)
 	u.Path = putEndpoint
 	c.writeUrl = u.String()
+
+	// read url
+	u, _ = url.Parse(openRUrl)
 	u.Path = queryEndpoint
 	c.readUrl = u.String()
-
+	
 	return &c
 }
 
