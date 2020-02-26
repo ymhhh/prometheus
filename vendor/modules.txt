@@ -122,20 +122,20 @@ github.com/go-openapi/strfmt
 github.com/go-openapi/swag
 # github.com/go-openapi/validate v0.17.2
 github.com/go-openapi/validate
-# github.com/go-sql-driver/mysql v1.4.1
+# github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/go-trellis/algorithm v0.0.0-20190611160533-53aa8c3b8e20
+# github.com/go-trellis/algorithm v1.0.1
 github.com/go-trellis/algorithm/data-structures/stack
 github.com/go-trellis/algorithm/encryption/hash
-# github.com/go-trellis/common v1.2.0
+# github.com/go-trellis/common v1.3.1
 github.com/go-trellis/common/formats
-# github.com/go-trellis/config v1.3.4
+# github.com/go-trellis/config v1.3.5
 github.com/go-trellis/config
-# github.com/go-trellis/errors v0.0.0-20171025051548-b0cc96c4f84c
+# github.com/go-trellis/errors v1.0.0
 github.com/go-trellis/errors
-# github.com/go-trellis/txorm v1.0.0
+# github.com/go-trellis/txorm v1.0.1
 github.com/go-trellis/txorm
 # github.com/go-xorm/xorm v0.7.9
 github.com/go-xorm/xorm
@@ -439,7 +439,6 @@ google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
 # google.golang.org/appengine v1.6.0
 google.golang.org/appengine
-google.golang.org/appengine/cloudsql
 google.golang.org/appengine/internal
 google.golang.org/appengine/internal/app_identity
 google.golang.org/appengine/internal/base

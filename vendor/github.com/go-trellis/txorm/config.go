@@ -13,17 +13,17 @@ import (
 
 var locker = &sync.Mutex{}
 
-// NewXormEnginesFromFile initial xorm engine from file
-func NewXormEnginesFromFile(file string) (map[string]*xorm.Engine, error) {
+// NewEnginesFromFile initial xorm engine from file
+func NewEnginesFromFile(file string) (map[string]*xorm.Engine, error) {
 	conf, err := config.NewConfigOptions(config.OptionFile(file))
 	if err != nil {
 		return nil, err
 	}
-	return NewXormEnginesFromConfig(conf, "mysql")
+	return NewEnginesFromConfig(conf, "mysql")
 }
 
-// NewXormEnginesFromConfig initial xorm engine from config
-func NewXormEnginesFromConfig(conf config.Config, name string) (map[string]*xorm.Engine, error) {
+// NewEnginesFromConfig initial xorm engine from config
+func NewEnginesFromConfig(conf config.Config, name string) (map[string]*xorm.Engine, error) {
 
 	engines := make(map[string]*xorm.Engine)
 
@@ -38,9 +38,9 @@ func NewXormEnginesFromConfig(conf config.Config, name string) (map[string]*xorm
 			return nil, err
 		}
 
-		_engine.SetMaxIdleConns(int(cfg.GetInt(databaseName+".max_idle_conns", 10)))
+		_engine.SetMaxIdleConns(cfg.GetInt(databaseName+".max_idle_conns", 10))
 
-		_engine.SetMaxOpenConns(int(cfg.GetInt(databaseName+".max_open_conns", 100)))
+		_engine.SetMaxOpenConns(cfg.GetInt(databaseName+".max_open_conns", 100))
 
 		_engine.ShowSQL(cfg.GetBoolean(databaseName + ".show_sql"))
 

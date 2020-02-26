@@ -16,8 +16,12 @@ func ToFloat64(value interface{}) (float64, error) {
 
 	var val string
 	switch reflect.TypeOf(value).Kind() {
-	case reflect.Float32, reflect.Float64:
-		val = fmt.Sprintf("%f", value)
+	case reflect.Float64:
+		f := value.(float64)
+		return f, nil
+	case reflect.Float32:
+		f := value.(float32)
+		return float64(f), nil
 	case reflect.Int8, reflect.Int16, reflect.Int, reflect.Int32, reflect.Int64:
 		val = fmt.Sprintf("%d", value)
 	case reflect.String:
@@ -38,7 +42,7 @@ func ToFloat64(value interface{}) (float64, error) {
 func RoundFund(fund float64) int64 {
 	fInt, fFloat := math.Modf(fund)
 	f := int64(fInt)
-	if fFloat > 0.50000000001 {
+	if fFloat >= 0.50000000000 {
 		f++
 	}
 	return f
