@@ -1,4 +1,4 @@
-// Copyright 2020 The BDP
+// Copyright 2020 The JD BDP
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -81,6 +81,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/refresh"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/prometheus/prometheus/models"
 )
 
 var (
@@ -164,7 +165,7 @@ func NewDiscovery(cfg *SDConfig, l log.Logger) (*Discovery, error) {
 
 	tCfg := config.MapGetter().GenMapConfig(config.ReaderTypeYAML, cfg.DBConfig)
 
-	engines, err := txorm.NewXormEnginesFromConfig(tCfg, "mysql")
+	engines, err := txorm.NewEnginesFromConfig(tCfg, "mysql")
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +209,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		}
 	}
 
-	var data []TKmServers
+	var data []models.TKmServers
 	if err := session.Find(&data); err != nil {
 		return nil, err
 	}
@@ -216,7 +217,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	serverExists := map[string]*targetgroup.Group{}
 
 	for _, server := range data {
-		server.parseTag()
+		server.ParseTag()
 
 		key := fmt.Sprintf("%s:%s:%s:%s",
 			server.MachineRoom, server.Attribution, server.ClusterName, server.DeploymentServices)
@@ -245,7 +246,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			group.Labels["cabinet"] = server.Cabinet
 		}
 
-		for tag, value := range server.tagMaps {
+		for tag, value := range server.TagMaps {
 			aliasTag := p.tagAlias(string(tag))
 			level.Debug(p.logger).Log("msg", "tag_alias", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
 

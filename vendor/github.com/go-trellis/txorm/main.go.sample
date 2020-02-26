@@ -4,8 +4,7 @@
 // package main
 
 // import (
-//  "erros"
-//  "fmt"
+// 	"fmt"
 
 // 	"github.com/go-trellis/txorm"
 // 	"github.com/go-xorm/xorm"
@@ -16,17 +15,17 @@
 // )
 
 // type Sample struct {
-// 	ID   string `xorm:"id"`
-// 	Name string `xorm:"name"`
+// 	Id   string `xorm:"id"`
+// 	Name string `xorm:"Name"`
 // }
 
 // func (*Sample) TableName() string {
-// 	return "sample"
+// 	return "t_km_servers"
 // }
 
 // func main() {
 // 	var err error
-// 	engines, err = txorm.NewXormEnginesFromFile("mysql.yaml")
+// 	engines, err = txorm.NewEnginesFromFile("mysql.yaml")
 // 	if err != nil {
 // 		panic(err)
 // 	}
@@ -36,13 +35,10 @@
 // 		panic(txorm.ErrNotFoundXormEngine.New())
 // 	}
 
-// 	ss := Sample{}
-// 	err, has := engine.NewSession().Where("`id`= ?", "1").Get(&ss)
+// 	var ss []Sample
+// 	err = engine.NewSession().Find(&ss)
 // 	if err != nil {
 // 		panic(err)
 // 	}
-//  if !has {
-//      panci(errors.New("not found"))
-//  }
-//  fmt.Println(ss)
+// 	fmt.Println(ss)
 // }

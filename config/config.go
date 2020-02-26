@@ -136,6 +136,7 @@ type Config struct {
 	GlobalConfig    GlobalConfig    `yaml:"global"`
 	AlertingConfig  AlertingConfig  `yaml:"alerting,omitempty"`
 	RuleFiles       []string        `yaml:"rule_files,omitempty"`
+	RuleMysql       RuleMysql       `yaml:"rule_mysql,omitempty"`
 	ScrapeConfigs   []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
 	KaScrapeConfigs []*ScrapeConfig `yaml:"kascrape_configs,omitempty"`
 
@@ -714,4 +715,10 @@ func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
 	// Thus we just do its validation here.
 	return c.HTTPClientConfig.Validate()
+}
+
+// RuleMysql 增加对数据库规则的支持
+type RuleMysql struct {
+	DBConfig map[string]interface{} `yaml:"database,omitempty"`
+	Interval model.Duration         `yaml:"interval,omitempty"`
 }
