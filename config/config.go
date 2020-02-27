@@ -120,6 +120,9 @@ var (
 		// Backoff times for retrying a batch of samples on recoverable errors.
 		MinBackoff: model.Duration(30 * time.Millisecond),
 		MaxBackoff: model.Duration(100 * time.Millisecond),
+
+		// Data timeout
+		DataTimeout: 0,
 	}
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
@@ -679,6 +682,9 @@ type QueueConfig struct {
 	// On recoverable errors, backoff exponentially.
 	MinBackoff model.Duration `yaml:"min_backoff,omitempty"`
 	MaxBackoff model.Duration `yaml:"max_backoff,omitempty"`
+
+	// Data timeout (Unit: sec)
+	DataTimeout int64 `yaml:"data_timeout,omitempty"`
 }
 
 // RemoteReadConfig is the configuration for reading from remote storage.

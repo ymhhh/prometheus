@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -66,4 +67,84 @@ func SetAssets(uiPath string) http.FileSystem {
 		"/templates": templates,
 		"/static":    static,
 	})
+}
+
+// IsDigit 判断是全是数字
+func IsDigit(src string) bool {
+	if src == "" {
+		return false
+	}
+
+	for _, v := range src {
+		if v < '0' || v > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// IsHex 判断是否16进制，如0x12BC
+func IsHex(src string) bool {
+	if len(src) < 3 {
+		return false
+	}
+
+	if src[0] != '0' || !strings.ContainsRune("xX", rune(src[1])) {
+		return false
+	}
+
+	digits := "0123456789abcdefABCDEF"
+	for _, v := range src[2:] {
+		if !strings.ContainsRune(digits, rune(v)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// IsDate 日期格式，前面是数字，后面是smhdwy中的一个，这里不验证单位前面数字的大小
+func IsDate(src string) bool {
+	l := len(src)
+	if l < 2 {
+		return false
+	}
+
+	if !strings.ContainsRune("smhdwy", rune(src[l-1])) {
+		return false
+	}
+
+	if !IsDigit(src[:l-1]) {
+		return false
+	}
+
+	return true
+}
+
+// CheckMetircName check the metric name
+func CheckMetircName(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	// 全是数字
+	if IsDigit(name) {
+		return false
+	}
+
+	// 16进制格式
+	if IsHex(name) {
+		return false
+	}
+
+	// 日期格式
+	if IsDate(name) {
+		return false
+	}
+
+	// 正则匹配
+	//r, _ := regexp.Compile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
+	r, _ := regexp.Compile(`^[a-zA-Z0-9_:][a-zA-Z0-9_:]*$`)
+	return r.MatchString(name)
 }

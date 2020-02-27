@@ -26,14 +26,10 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util"
 	"github.com/xdg/scram"
 	"hash"
-	"io"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +76,7 @@ type kaScrapePool struct {
 	appendable Appendable
 	logger     log.Logger
 	config     *config.ScrapeConfig
+	mtx        sync.RWMutex
 
 	maxGoNums int        // max goroutine number
 	curGoNums int        // current goroutine number
@@ -87,11 +84,18 @@ type kaScrapePool struct {
 	wg        sync.WaitGroup
 	isStop    chan bool
 	isReload  chan bool
+	isChange  bool // 配置是否修改
 
 	kaCfg    *sarama.Config
 	kaCtx    context.Context
 	kaCancel context.CancelFunc
 	message  chan string
+
+	lockCnt   sync.Mutex
+	dateCnt   string
+	totalCnt  int64 // 目标暴露的样本数(scrape_samples_scraped)
+	addedCnt  int64 // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
+	seriesCnt int64 // 该刮擦中新系列的大致数量(scrape_series_added)
 }
 
 func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
@@ -110,8 +114,13 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		curGoNums:  0,
 		isStop:     make(chan bool),
 		isReload:   make(chan bool),
+		isChange:   true,
 		message:    make(chan string, msgLen),
 		logger:     logger,
+		dateCnt:    time.Now().Format("2006010215"),
+		totalCnt:   0,
+		addedCnt:   0,
+		seriesCnt:  0,
 	}
 
 	if cfg.MsgType == "MSG_T_JSON" && len(cfg.MsgLabel) == 0 {
@@ -161,8 +170,30 @@ func (sp *kaScrapePool) run(t *Target) {
 		honorTimestamps: sp.config.HonorTimestamps,
 		mrc:             mrc,
 	}
+
+	// 复用scrapeLoop里的函数
+	app := func() storage.Appender {
+		ad, err := sp.appendable.Appender()
+		if err != nil {
+			panic(err)
+		}
+		return appender(ad, 0)
+	}
 	sm := func(l labels.Labels) labels.Labels {
 		return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
+	}
+	rsm := func(l labels.Labels) labels.Labels {
+		return mutateReportSampleLabels(l, opts.target)
+	}
+	sl := &scrapeLoop{
+		scraper:             &targetScraper{Target: t},
+		buffers:             nil,
+		cache:               ca,
+		appender:            app,
+		sampleMutator:       sm,
+		reportSampleMutator: rsm,
+		l:                   sp.logger,
+		honorTimestamps:     sp.config.HonorTimestamps,
 	}
 
 	var err error
@@ -181,15 +212,12 @@ LOOP:
 				}
 			}
 			start := time.Now()
-			_, _, _, appErr := sp.append([]byte(msg), "", start, ca, sm)
+			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
 				level.Warn(sp.logger).Log("msg", "append failed", "err", appErr)
-				// The append failed, probably due to a parse error or sample limit.
-				// Call sl.append again with an empty scrape to trigger stale markers.
-				//if _, _, _, err := kh.append(message.Value, "", start); err != nil {
-				//	level.Warn(kh.logger).Log("msg", "append failed", "err", err)
-				//}
 			}
+			sp.report(total, added, seriesAdded, false)
+
 		case <-sp.isStop:
 			<-sp.kaCtx.Done()
 			<-time.After(5 * time.Second)
@@ -204,13 +232,13 @@ LOOP:
 func (sp *kaScrapePool) stop() {
 	sp.kaCancel()
 	close(sp.isStop)
+	sp.report(0, 0, 0, true)
 	sp.wg.Wait()
 }
 
 // recv recv message from kafka
 func (sp *kaScrapePool) recv() {
 	level.Info(sp.logger).Log("msg", "recv message start...")
-	level.Info(sp.logger).Log("msg", "recv message get connect start...")
 	client, err := sp.getKaConn()
 	if err != nil {
 		level.Error(sp.logger).Log("msg", "recv message get connect err", "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
@@ -238,15 +266,20 @@ func (sp *kaScrapePool) recv() {
 }
 
 func (sp *kaScrapePool) loop(targets []*Target) {
+	if !sp.GetChanged() {
+		level.Info(sp.logger).Log("msg", "configuration has not changed")
+		return
+	}
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	start := func() {
 		for {
-			if sp.getCurNum() >= sp.maxGoNums {
+			curNum := sp.getCurNum()
+			level.Info(sp.logger).Log("curGoNum", curNum, "maxGoNum", sp.maxGoNums)
+			if curNum >= sp.maxGoNums {
 				break
 			}
-			level.Info(sp.logger).Log("curGoNum", sp.getCurNum(), "maxGoNum", sp.maxGoNums)
 
 			sp.incCurNum()
 			sp.wg.Add(1)
@@ -300,6 +333,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 	for k, v := range md {
 		// value, "val":200
 		if t, ok := v.(float64); ok {
+			if !util.CheckMetircName(k) {
+				level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k)
+				continue
+			}
 			buf.WriteString("# TYPE " + k + " untyped\n")
 			buf.WriteString(k)
 			buf.WriteString("{")
@@ -317,6 +354,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 					continue
 				}
 				name := k + "_" + k1
+				if !util.CheckMetircName(name) {
+					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", name)
+					continue
+				}
 				buf.WriteString("# TYPE " + name + " untyped\n")
 				buf.WriteString(name)
 				buf.WriteString("{")
@@ -342,6 +383,10 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 			} // end for _, t1
 
 			for k1, v1 := range m {
+				if !util.CheckMetircName(k1) {
+					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k1)
+					continue
+				}
 				buf.WriteString("# TYPE " + k1 + " untyped\n")
 				buf.WriteString(k1)
 				buf.WriteString("{")
@@ -358,196 +403,6 @@ func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
 	}
 
 	return buf.String(), nil
-}
-
-// append add message to TSDB
-func (sp *kaScrapePool) append(b []byte, contentType string, ts time.Time, ca *scrapeCache, sm func(l labels.Labels) labels.Labels) (total, added, seriesAdded int, err error) {
-	var (
-		//app            = sl.appender()
-		app = func() storage.Appender {
-			ad, err := sp.appendable.Appender()
-			if err != nil {
-				panic(err)
-			}
-			return appender(ad, 0)
-		}()
-		p              = textparse.New(b, contentType)
-		defTime        = timestamp.FromTime(ts)
-		numOutOfOrder  = 0
-		numDuplicates  = 0
-		numOutOfBounds = 0
-	)
-
-	var sampleLimitErr error
-
-loop:
-	for {
-		var et textparse.Entry
-		if et, err = p.Next(); err != nil {
-			if err == io.EOF {
-				err = nil
-			}
-			break
-		}
-		switch et {
-		case textparse.EntryType:
-			ca.setType(p.Type())
-			continue
-		case textparse.EntryHelp:
-			ca.setHelp(p.Help())
-			continue
-		case textparse.EntryUnit:
-			ca.setUnit(p.Unit())
-			continue
-		case textparse.EntryComment:
-			continue
-		default:
-		}
-		total++
-
-		t := defTime
-		met, tp, v := p.Series()
-		if !sp.config.HonorTimestamps {
-			tp = nil
-		}
-		if tp != nil {
-			t = *tp
-		}
-
-		if ca.getDropped(yoloString(met)) {
-			continue
-		}
-		ce, ok := ca.get(yoloString(met))
-		if ok {
-			switch err = app.AddFast(ce.lset, ce.ref, t, v); err {
-			case nil:
-				if tp == nil {
-					ca.trackStaleness(ce.hash, ce.lset)
-				}
-			case storage.ErrNotFound:
-				ok = false
-			case storage.ErrOutOfOrderSample:
-				numOutOfOrder++
-				level.Debug(sp.logger).Log("msg", "Out of order sample", "series", string(met))
-				targetScrapeSampleOutOfOrder.Inc()
-				continue
-			case storage.ErrDuplicateSampleForTimestamp:
-				numDuplicates++
-				level.Debug(sp.logger).Log("msg", "Duplicate sample for timestamp", "series", string(met))
-				targetScrapeSampleDuplicate.Inc()
-				continue
-			case storage.ErrOutOfBounds:
-				numOutOfBounds++
-				level.Debug(sp.logger).Log("msg", "Out of bounds metric", "series", string(met))
-				targetScrapeSampleOutOfBounds.Inc()
-				continue
-			case errSampleLimit:
-				// Keep on parsing output if we hit the limit, so we report the correct
-				// total number of samples scraped.
-				sampleLimitErr = err
-				added++
-				continue
-			default:
-				break loop
-			}
-		}
-		if !ok {
-			var lset labels.Labels
-
-			mets := p.Metric(&lset)
-			hash := lset.Hash()
-
-			// Hash label set as it is seen local to the target. Then add target labels
-			// and relabeling and store the final label set.
-			lset = sm(lset)
-
-			// The label set may be set to nil to indicate dropping.
-			if lset == nil {
-				ca.addDropped(mets)
-				continue
-			}
-
-			var ref uint64
-			ref, err = app.Add(lset, t, v)
-			switch err {
-			case nil:
-			case storage.ErrOutOfOrderSample:
-				err = nil
-				numOutOfOrder++
-				level.Debug(sp.logger).Log("msg", "Out of order sample", "series", string(met))
-				targetScrapeSampleOutOfOrder.Inc()
-				continue
-			case storage.ErrDuplicateSampleForTimestamp:
-				err = nil
-				numDuplicates++
-				level.Debug(sp.logger).Log("msg", "Duplicate sample for timestamp", "series", string(met))
-				targetScrapeSampleDuplicate.Inc()
-				continue
-			case storage.ErrOutOfBounds:
-				err = nil
-				numOutOfBounds++
-				level.Debug(sp.logger).Log("msg", "Out of bounds metric", "series", string(met))
-				targetScrapeSampleOutOfBounds.Inc()
-				continue
-			case errSampleLimit:
-				sampleLimitErr = err
-				added++
-				continue
-			default:
-				level.Debug(sp.logger).Log("msg", "unexpected error", "series", string(met), "err", err)
-				break loop
-			}
-			if tp == nil {
-				// Bypass staleness logic if there is an explicit timestamp.
-				ca.trackStaleness(hash, lset)
-			}
-			ca.addRef(mets, ref, lset, hash)
-			seriesAdded++
-		}
-		added++
-	}
-	if sampleLimitErr != nil {
-		if err == nil {
-			err = sampleLimitErr
-		}
-		// We only want to increment this once per scrape, so this is Inc'd outside the loop.
-		targetScrapeSampleLimit.Inc()
-	}
-	if numOutOfOrder > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting out-of-order samples", "num_dropped", numOutOfOrder)
-	}
-	if numDuplicates > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting samples with different value but same timestamp", "num_dropped", numDuplicates)
-	}
-	if numOutOfBounds > 0 {
-		level.Warn(sp.logger).Log("msg", "Error on ingesting samples that are too old or are too far into the future", "num_dropped", numOutOfBounds)
-	}
-	if err == nil {
-		ca.forEachStale(func(lset labels.Labels) bool {
-			// Series no longer exposed, mark it stale.
-			_, err = app.Add(lset, defTime, math.Float64frombits(value.StaleNaN))
-			switch err {
-			case storage.ErrOutOfOrderSample, storage.ErrDuplicateSampleForTimestamp:
-				// Do not count these in logging, as this is expected if a target
-				// goes away and comes back again with a new scrape loop.
-				err = nil
-			}
-			return err == nil
-		})
-	}
-	if err != nil {
-		app.Rollback()
-		return total, added, seriesAdded, err
-	}
-	if err := app.Commit(); err != nil {
-		return total, added, seriesAdded, err
-	}
-
-	// Only perform cache cleaning if the scrape was not empty.
-	// An empty scrape (usually) is used to indicate a failed scrape.
-	ca.iterDone(len(b) > 0)
-
-	return total, added, seriesAdded, nil
 }
 
 // Sync converts target groups into actual scrape targets and synchronizes
@@ -572,6 +427,41 @@ func (sp *kaScrapePool) Sync(tgs []*targetgroup.Group) {
 	}
 
 	go sp.loop(all)
+}
+
+// report save the count of scrape metric.
+func (sp *kaScrapePool) report(totalCnt, addedCnt, seriesCnt int, isSave bool) {
+	sp.lockCnt.Lock()
+	defer sp.lockCnt.Unlock()
+
+	sp.totalCnt += int64(totalCnt)
+	sp.addedCnt += int64(addedCnt)
+	sp.seriesCnt += int64(seriesCnt)
+	curDate := time.Now().Format("2006010215")
+
+	if isSave || sp.dateCnt != curDate {
+		level.Info(sp.logger).Log("msg", "scrape records", "dateCnt", sp.dateCnt, "totalCnt", sp.totalCnt, "addedCnt", sp.addedCnt, "seriesCnt", sp.seriesCnt)
+		sp.totalCnt = 0
+		sp.addedCnt = 0
+		sp.seriesCnt = 0
+		sp.dateCnt = curDate
+	}
+}
+
+// GetChanged return isChanged
+func (sp *kaScrapePool) GetChanged() bool {
+	sp.mtx.RLock()
+	defer sp.mtx.RUnlock()
+
+	return sp.isChange
+}
+
+// SetChanged set isChanged
+func (sp *kaScrapePool) SetChanged(changed bool) {
+	sp.mtx.Lock()
+	defer sp.mtx.Unlock()
+
+	sp.isChange = changed
 }
 
 // getKaConn return a kafka connect.

@@ -73,7 +73,7 @@ yystart1:
 		goto yyabort
 	case c == '#':
 		goto yystate5
-	case c == ':' || c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z':
+	case c == ':' || c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9':
 		goto yystate7
 	case c == '\n':
 		goto yystate4
@@ -239,7 +239,7 @@ yystart19:
 	switch {
 	default:
 		goto yyabort
-	case c == ':' || c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z':
+	case c == ':' || c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9':
 		goto yystate20
 	case c == '\t' || c == ' ':
 		goto yystate3
@@ -302,7 +302,7 @@ yystart24:
 		goto yystate3
 	case c == '}':
 		goto yystate28
-	case c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z':
+	case c >= 'A' && c <= 'Z' || c == '_' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9':
 		goto yystate27
 	}
 

@@ -15,14 +15,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -50,7 +53,8 @@ type config struct {
 	graphiteAddress         string
 	graphiteTransport       string
 	graphitePrefix          string
-	opentsdbURL             string
+	opentsdbWURL            string
+	opentsdbRURL            string
 	influxdbURL             string
 	influxdbRetentionPolicy string
 	influxdbUsername        string
@@ -91,6 +95,11 @@ var (
 		},
 		[]string{"remote"},
 	)
+
+	gLockCnt sync.Mutex
+	gDateCnt = time.Now().Format("2006010215")
+	gAllCnt  int64 // 总数
+	gSucCnt  int64 // 成功数
 )
 
 func init() {
@@ -109,8 +118,10 @@ func main() {
 	writers, readers := buildClients(logger, cfg)
 	if err := serve(logger, cfg.listenAddr, writers, readers); err != nil {
 		level.Error(logger).Log("msg", "Failed to listen", "addr", cfg.listenAddr, "err", err)
-		os.Exit(1)
 	}
+
+	report(logger, 0, 0, true)
+	level.Info(logger).Log("msg", "See you next time!")
 }
 
 func parseFlags() *config {
@@ -128,8 +139,10 @@ func parseFlags() *config {
 		Default("tcp").StringVar(&cfg.graphiteTransport)
 	a.Flag("graphite-prefix", "The prefix to prepend to all metrics exported to Graphite. None, if empty.").
 		Default("").StringVar(&cfg.graphitePrefix)
-	a.Flag("opentsdb-url", "The URL of the remote OpenTSDB server to send samples to. None, if empty.").
-		Default("").StringVar(&cfg.opentsdbURL)
+	a.Flag("opentsdb-wurl", "The URL of the remote OpenTSDB server to write samples to. None, if empty.").
+		Default("").StringVar(&cfg.opentsdbWURL)
+	a.Flag("opentsdb-rurl", "The URL of the remote OpenTSDB server to read samples to. None, if empty.").
+		Default("").StringVar(&cfg.opentsdbRURL)
 	a.Flag("influxdb-url", "The URL of the remote InfluxDB server to send samples to. None, if empty.").
 		Default("").StringVar(&cfg.influxdbURL)
 	a.Flag("influxdb.retention-policy", "The InfluxDB retention policy to use.").
@@ -158,7 +171,7 @@ func parseFlags() *config {
 }
 
 type writer interface {
-	Write(samples model.Samples) error
+	Write(samples model.Samples) (int, error)
 	Name() string
 }
 
@@ -177,13 +190,15 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 			cfg.remoteTimeout, cfg.graphitePrefix)
 		writers = append(writers, c)
 	}
-	if cfg.opentsdbURL != "" {
+	if cfg.opentsdbWURL != "" || cfg.opentsdbRURL != "" {
 		c := opentsdb.NewClient(
 			log.With(logger, "storage", "OpenTSDB"),
-			cfg.opentsdbURL,
+			cfg.opentsdbWURL,
+			cfg.opentsdbRURL,
 			cfg.remoteTimeout,
 		)
 		writers = append(writers, c)
+		readers = append(readers, c)
 	}
 	if cfg.influxdbURL != "" {
 		url, err := url.Parse(cfg.influxdbURL)
@@ -207,29 +222,46 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 		writers = append(writers, c)
 		readers = append(readers, c)
 	}
-	level.Info(logger).Log("msg", "Starting up...")
+	level.Info(logger).Log("msg", "Starting up...", "addr", cfg.listenAddr)
 	return writers, readers
 }
 
-func serve(logger log.Logger, addr string, writers []writer, readers []reader) error {
-	http.HandleFunc("/write", func(w http.ResponseWriter, r *http.Request) {
+// RemoteHandler handler
+type RemoteHandler struct {
+	addr    string
+	writers []writer
+	readers []reader
+	logger  log.Logger
+}
+
+func newRemoteHandler(logger log.Logger, addr string, writers []writer, readers []reader) *RemoteHandler {
+	return &RemoteHandler{
+		addr:    addr,
+		writers: writers,
+		readers: readers,
+		logger:  logger,
+	}
+}
+
+func (h *RemoteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/write" {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Read error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
-			level.Error(logger).Log("msg", "Decode error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		var req prompb.WriteRequest
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			level.Error(logger).Log("msg", "Unmarshal error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -238,49 +270,47 @@ func serve(logger log.Logger, addr string, writers []writer, readers []reader) e
 		receivedSamples.Add(float64(len(samples)))
 
 		var wg sync.WaitGroup
-		for _, w := range writers {
+		for _, w := range h.writers {
 			wg.Add(1)
 			go func(rw writer) {
-				sendSamples(logger, rw, samples)
+				sendSamples(h.logger, rw, samples)
 				wg.Done()
 			}(w)
 		}
 		wg.Wait()
-	})
-
-	http.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
+	} else if r.URL.Path == "/read" {
 		compressed, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Read error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Read error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		reqBuf, err := snappy.Decode(nil, compressed)
 		if err != nil {
-			level.Error(logger).Log("msg", "Decode error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Decode error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		var req prompb.ReadRequest
 		if err := proto.Unmarshal(reqBuf, &req); err != nil {
-			level.Error(logger).Log("msg", "Unmarshal error", "err", err.Error())
+			level.Error(h.logger).Log("msg", "Unmarshal error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		// TODO: Support reading from more than one reader and merging the results.
-		if len(readers) != 1 {
-			http.Error(w, fmt.Sprintf("expected exactly one reader, found %d readers", len(readers)), http.StatusInternalServerError)
+		if len(h.readers) != 1 {
+			http.Error(w, fmt.Sprintf("expected exactly one reader, found %d readers", len(h.readers)), http.StatusInternalServerError)
 			return
 		}
-		reader := readers[0]
+		reader := h.readers[0]
 
 		var resp *prompb.ReadResponse
 		resp, err = reader.Read(&req)
 		if err != nil {
-			level.Warn(logger).Log("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
+			level.Warn(h.logger).Log("msg", "Error executing query", "query", req, "storage", reader.Name(), "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -296,11 +326,21 @@ func serve(logger log.Logger, addr string, writers []writer, readers []reader) e
 
 		compressed = snappy.Encode(nil, data)
 		if _, err := w.Write(compressed); err != nil {
-			level.Warn(logger).Log("msg", "Error writing response", "storage", reader.Name(), "err", err)
+			level.Warn(h.logger).Log("msg", "Error writing response", "storage", reader.Name(), "err", err)
 		}
-	})
+	}
+}
 
-	return http.ListenAndServe(addr, nil)
+func serve(logger log.Logger, addr string, writers []writer, readers []reader) error {
+	rHandler := newRemoteHandler(logger, addr, writers, readers)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      rHandler,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
+	go interruptHandler(srv, logger)
+	return srv.ListenAndServe()
 }
 
 func protoToSamples(req *prompb.WriteRequest) model.Samples {
@@ -324,12 +364,41 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 
 func sendSamples(logger log.Logger, w writer, samples model.Samples) {
 	begin := time.Now()
-	err := w.Write(samples)
+	sucCnt, err := w.Write(samples)
 	duration := time.Since(begin).Seconds()
+	report(logger, len(samples), sucCnt, false)
 	if err != nil {
 		level.Warn(logger).Log("msg", "Error sending samples to remote storage", "err", err, "storage", w.Name(), "num_samples", len(samples))
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
 	}
 	sentSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
 	sentBatchDuration.WithLabelValues(w.Name()).Observe(duration)
+}
+
+// report save the count of scrape metric.
+func report(logger log.Logger, allCnt, sucCnt int, isSave bool) {
+	gLockCnt.Lock()
+	defer gLockCnt.Unlock()
+
+	gAllCnt += int64(allCnt)
+	gSucCnt += int64(sucCnt)
+	curDate := time.Now().Format("2006010215")
+
+	if isSave || gDateCnt != curDate {
+		level.Info(logger).Log("msg", "storage records", "dateCnt", gDateCnt, "totalCnt", gAllCnt, "sucCnt", gSucCnt, "errCnt", gAllCnt-gSucCnt)
+		gAllCnt = 0
+		gSucCnt = 0
+		gDateCnt = curDate
+	}
+}
+
+// interruptHandler capture signal
+func interruptHandler(srv *http.Server, logger log.Logger) {
+	notifier := make(chan os.Signal, 1)
+	signal.Notify(notifier, os.Interrupt, syscall.SIGTERM)
+	<-notifier
+	level.Info(logger).Log("msg", "received SIGINT/SIGTERM; exiting gracefully...")
+
+	ctx, _ := context.WithTimeout(context.Background(), 10)
+	srv.Shutdown(ctx)
 }
