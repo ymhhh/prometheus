@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-type BzMonitorGroupErp struct {
+type BzAlertGroupErp struct {
 	Id           string    `xorm:"not null pk default '' VARCHAR(50)"`
 	AlertGroupId string    `xorm:"not null default '' comment('报警组Id') index VARCHAR(50)"`
 	Erp          string    `xorm:"not null comment('ERP账号') VARCHAR(50)"`

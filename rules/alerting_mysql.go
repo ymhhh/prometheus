@@ -126,7 +126,7 @@ func (m *Manager) LoadMysqlGroups(
 
 	for _, v := range alerts {
 		itv := interval
-		gkey := fmt.Sprintf("%s-%s", v.Id, v.Name)
+		gkey := fmt.Sprintf("%s-%s", v.Name, v.Id)
 
 		expr, err := promql.ParseExpr(v.Expression)
 		if err != nil {
@@ -139,21 +139,30 @@ func (m *Manager) LoadMysqlGroups(
 			return nil, []error{errors.Wrap(err, gkey)}
 		}
 
+		var rules []Rule
 		for _, thrd := range alertThresholds {
-			rLabels := map[string]string{"monitor_id": v.Id, "severity": thrd.Severity}
+			rLabels := map[string]string{
+				"alert_id":     v.Id,
+				"Threshold_id": thrd.Id,
+				"threshold":    fmt.Sprintf("%f", thrd.Threshold),
+				"severity":     thrd.Severity}
+
+			annotations := map[string]string{
+				"summary":     v.Title,
+				"description": v.Content}
 			rule := NewAlertingRule(
 				gkey,
 				expr,
 				formats.ParseStringTime(thrd.For),
 				labels.FromMap(rLabels),
-				labels.FromMap(nil),
+				labels.FromMap(annotations),
 				externalLabels,
 				m.restored,
 				log.With(m.logger, "alert_mysql", gkey),
 			)
-
-			groups[gkey] = NewGroup(v.Name, v.Id, itv, []Rule{rule}, shouldRestore, m.opts)
+			rules = append(rules, rule)
 		}
+		groups[gkey] = NewGroup(v.Name, v.Id, itv, rules, shouldRestore, m.opts)
 	}
 
 	return groups, nil

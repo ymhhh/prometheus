@@ -28,6 +28,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery/mysql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 )
@@ -719,6 +720,6 @@ func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 
 // RuleMysql 增加对数据库规则的支持
 type RuleMysql struct {
-	DBConfig map[string]interface{} `yaml:"database,omitempty"`
-	Interval model.Duration         `yaml:"interval,omitempty"`
+	DBConfig mysql.DBConfig `yaml:"database,omitempty"`
+	Interval model.Duration `yaml:"interval,omitempty"`
 }
