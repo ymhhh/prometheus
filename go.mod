@@ -15,8 +15,9 @@ require (
 	github.com/go-kit/kit v0.9.0
 	github.com/go-logfmt/logfmt v0.4.0
 	github.com/go-openapi/strfmt v0.19.2
-	github.com/go-trellis/config v1.3.4
-	github.com/go-trellis/txorm v1.0.0
+	github.com/go-trellis/common v1.3.1
+	github.com/go-trellis/config v1.3.5
+	github.com/go-trellis/txorm v1.0.1
 	github.com/go-xorm/xorm v0.7.9
 	github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
 	github.com/golang/snappy v0.0.1

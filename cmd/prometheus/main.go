@@ -89,6 +89,10 @@ func init() {
 	}
 }
 
+const (
+	roleAlert = "alert"
+)
+
 func main() {
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
@@ -101,6 +105,11 @@ func main() {
 	)
 
 	cfg := struct {
+		// added by huanghonghu
+		// 启动角色，目前仅有alert，如何值为其他，则不该以前的规则
+		// 如果仅为报警角色，那么会屏蔽一些其他的功能，如remote_write等
+		role string
+
 		configFile string
 
 		localStoragePath    string
@@ -138,6 +147,8 @@ func main() {
 	a.Version(version.Print("prometheus"))
 
 	a.HelpFlag.Short('h')
+
+	a.Flag("role", "Prometheus' starting role, such as: alert").StringVar(&cfg.role)
 
 	a.Flag("config.file", "Prometheus configuration file path.").
 		Default("prometheus.yml").StringVar(&cfg.configFile)
@@ -430,57 +441,131 @@ func main() {
 		conntrack.DialWithTracing(),
 	)
 
-	reloaders := []func(cfg *config.Config) error{
-		remoteStorage.ApplyConfig,
-		webHandler.ApplyConfig,
-		// The Scrape and notifier managers need to reload before the Discovery manager as
-		// they need to read the most updated config when receiving the new targets list.
-		scrapeManager.ApplyConfig,
-		func(cfg *config.Config) error {
-			c := make(map[string]sd_config.ServiceDiscoveryConfig)
-			for _, v := range cfg.ScrapeConfigs {
-				c[v.JobName] = v.ServiceDiscoveryConfig
-			}
-			return discoveryManagerScrape.ApplyConfig(c)
-		},
-		kaScrapeManager.ApplyConfig,
-		func(cfg *config.Config) error {
-			c := make(map[string]sd_config.ServiceDiscoveryConfig)
-			for _, v := range cfg.KaScrapeConfigs {
-				c[v.JobName] = v.ServiceDiscoveryConfig
-			}
-			return discoveryKaManagerScrape.ApplyConfig(c)
-		},
-		notifierManager.ApplyConfig,
-		func(cfg *config.Config) error {
-			c := make(map[string]sd_config.ServiceDiscoveryConfig)
-			for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
-				// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
-				b, err := json.Marshal(v)
-				if err != nil {
-					return err
+	var reloaders []func(cfg *config.Config) error
+
+	switch cfg.role {
+	case roleAlert:
+		reloaders = []func(cfg *config.Config) error{
+			scrapeManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.ScrapeConfigs {
+					c[v.JobName] = v.ServiceDiscoveryConfig
 				}
-				c[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
-			}
-			return discoveryManagerNotify.ApplyConfig(c)
-		},
-		func(cfg *config.Config) error {
-			// Get all rule files matching the configuration paths.
-			var files []string
-			for _, pat := range cfg.RuleFiles {
-				fs, err := filepath.Glob(pat)
-				if err != nil {
-					// The only error can be a bad pattern.
-					return errors.Wrapf(err, "error retrieving rule files for %s", pat)
+				return discoveryManagerScrape.ApplyConfig(c)
+			},
+			kaScrapeManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.KaScrapeConfigs {
+					c[v.JobName] = v.ServiceDiscoveryConfig
 				}
-				files = append(files, fs...)
-			}
-			return ruleManager.Update(
-				time.Duration(cfg.GlobalConfig.EvaluationInterval),
-				files,
-				cfg.GlobalConfig.ExternalLabels,
-			)
-		},
+				return discoveryKaManagerScrape.ApplyConfig(c)
+			},
+			notifierManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
+					// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
+					b, err := json.Marshal(v)
+					if err != nil {
+						return err
+					}
+					c[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+				}
+				return discoveryManagerNotify.ApplyConfig(c)
+			},
+			func(cfg *config.Config) error {
+				// Get all rule files matching the configuration paths.
+				var files []string
+				for _, pat := range cfg.RuleFiles {
+					fs, err := filepath.Glob(pat)
+					if err != nil {
+						// The only error can be a bad pattern.
+						return errors.Wrapf(err, "error retrieving rule files for %s", pat)
+					}
+					files = append(files, fs...)
+				}
+				return ruleManager.Update(
+					time.Duration(cfg.GlobalConfig.EvaluationInterval),
+					files,
+					cfg.GlobalConfig.ExternalLabels,
+				)
+			},
+			func(cfg *config.Config) error {
+				if len(cfg.RuleMysql.DBConfig) == 0 {
+					return nil
+				}
+				return ruleManager.UpdateMysql(
+					time.Duration(cfg.RuleMysql.Interval),
+					cfg.RuleMysql.DBConfig,
+					cfg.GlobalConfig.ExternalLabels,
+				)
+			},
+		}
+	default:
+		reloaders = []func(cfg *config.Config) error{
+			remoteStorage.ApplyConfig,
+			webHandler.ApplyConfig,
+			// The Scrape and notifier managers need to reload before the Discovery manager as
+			// they need to read the most updated config when receiving the new targets list.
+			scrapeManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.ScrapeConfigs {
+					c[v.JobName] = v.ServiceDiscoveryConfig
+				}
+				return discoveryManagerScrape.ApplyConfig(c)
+			},
+			kaScrapeManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.KaScrapeConfigs {
+					c[v.JobName] = v.ServiceDiscoveryConfig
+				}
+				return discoveryKaManagerScrape.ApplyConfig(c)
+			},
+			notifierManager.ApplyConfig,
+			func(cfg *config.Config) error {
+				c := make(map[string]sd_config.ServiceDiscoveryConfig)
+				for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
+					// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
+					b, err := json.Marshal(v)
+					if err != nil {
+						return err
+					}
+					c[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+				}
+				return discoveryManagerNotify.ApplyConfig(c)
+			},
+			func(cfg *config.Config) error {
+				// Get all rule files matching the configuration paths.
+				var files []string
+				for _, pat := range cfg.RuleFiles {
+					fs, err := filepath.Glob(pat)
+					if err != nil {
+						// The only error can be a bad pattern.
+						return errors.Wrapf(err, "error retrieving rule files for %s", pat)
+					}
+					files = append(files, fs...)
+				}
+				return ruleManager.Update(
+					time.Duration(cfg.GlobalConfig.EvaluationInterval),
+					files,
+					cfg.GlobalConfig.ExternalLabels,
+				)
+			},
+			func(cfg *config.Config) error {
+				if len(cfg.RuleMysql.DBConfig) == 0 {
+					return nil
+				}
+				return ruleManager.UpdateMysql(
+					time.Duration(cfg.RuleMysql.Interval),
+					cfg.RuleMysql.DBConfig,
+					cfg.GlobalConfig.ExternalLabels,
+				)
+			},
+		}
 	}
 
 	prometheus.MustRegister(configSuccess)

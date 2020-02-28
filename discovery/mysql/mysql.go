@@ -1,4 +1,4 @@
-// Copyright 2020 The BDP
+// Copyright 2020 The JD BDP
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -68,6 +68,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -81,6 +82,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/refresh"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/prometheus/prometheus/models"
 )
 
 var (
@@ -90,13 +92,33 @@ var (
 	}
 )
 
+type DBConfig map[string]interface{}
+
+const secretToken = "<secret>"
+
+// MarshalYAML implements the yaml.Marshaler interface for Secret.
+func (p DBConfig) MarshalYAML() (interface{}, error) {
+	if p == nil || len(p) == 0 {
+		return nil, nil
+	}
+	return map[string]interface{}{"database": secretToken}, nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for Secret.
+func (p DBConfig) MarshalJSON() ([]byte, error) {
+	if p == nil || len(p) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(map[string]interface{}{"database": secretToken})
+}
+
 // SDConfig is the configuration for file based discovery.
 type SDConfig struct {
-	DBConfig         map[string]interface{} `yaml:"database,omitempty"`
-	RefreshInterval  model.Duration         `yaml:"refresh_interval,omitempty"`
-	FilterConditions []FilterCondition      `yaml:"filter_conditions,omitempty"`
-	ServerPort       int                    `yaml:"server_port,omitempty"`
-	TagAlias         map[string]string      `yaml:"tag_alias,omitempty"`
+	DBConfig         DBConfig          `yaml:"database,omitempty"`
+	RefreshInterval  model.Duration    `yaml:"refresh_interval,omitempty"`
+	FilterConditions []FilterCondition `yaml:"filter_conditions,omitempty"`
+	ServerPort       int               `yaml:"server_port,omitempty"`
+	TagAlias         map[string]string `yaml:"tag_alias,omitempty"`
 }
 
 // FilterCondition 过滤器
@@ -164,7 +186,7 @@ func NewDiscovery(cfg *SDConfig, l log.Logger) (*Discovery, error) {
 
 	tCfg := config.MapGetter().GenMapConfig(config.ReaderTypeYAML, cfg.DBConfig)
 
-	engines, err := txorm.NewXormEnginesFromConfig(tCfg, "mysql")
+	engines, err := txorm.NewEnginesFromConfig(tCfg, "mysql")
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +230,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		}
 	}
 
-	var data []TKmServers
+	var data []models.TKmServers
 	if err := session.Find(&data); err != nil {
 		return nil, err
 	}
@@ -216,7 +238,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	serverExists := map[string]*targetgroup.Group{}
 
 	for _, server := range data {
-		server.parseTag()
+		server.ParseTag()
 
 		key := fmt.Sprintf("%s:%s:%s:%s",
 			server.MachineRoom, server.Attribution, server.ClusterName, server.DeploymentServices)
@@ -245,7 +267,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			group.Labels["cabinet"] = server.Cabinet
 		}
 
-		for tag, value := range server.tagMaps {
+		for tag, value := range server.TagMaps {
 			aliasTag := p.tagAlias(string(tag))
 			level.Debug(p.logger).Log("msg", "tag_alias", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
 

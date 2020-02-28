@@ -1,5 +1,4 @@
 // GNU GPL v3 License
-
 // Copyright (c) 2016 github.com:go-trellis
 
 package hash
@@ -19,7 +18,10 @@ func (p *defaultHash) Sum(s string) string {
 
 func (p *defaultHash) SumBytes(data []byte) string {
 	p.Hash.Reset()
-	p.Hash.Write(data)
+	_, err := p.Hash.Write(data)
+	if err != nil {
+		return ""
+	}
 	return hex.EncodeToString(p.Hash.Sum(nil))
 }
 
@@ -48,7 +50,10 @@ func (p *defHash32) Sum(s string) string {
 
 func (p *defHash32) SumBytes(data []byte) string {
 	p.Hash.Reset()
-	p.Hash.Write(data)
+	_, err := p.Hash.Write(data)
+	if err != nil {
+		return ""
+	}
 	return hex.EncodeToString(p.Hash.Sum(nil))
 }
 
