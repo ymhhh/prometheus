@@ -68,6 +68,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -91,13 +92,33 @@ var (
 	}
 )
 
+type DBConfig map[string]interface{}
+
+const secretToken = "<secret>"
+
+// MarshalYAML implements the yaml.Marshaler interface for Secret.
+func (p DBConfig) MarshalYAML() (interface{}, error) {
+	if p == nil || len(p) == 0 {
+		return nil, nil
+	}
+	return map[string]interface{}{"database": secretToken}, nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for Secret.
+func (p DBConfig) MarshalJSON() ([]byte, error) {
+	if p == nil || len(p) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(map[string]interface{}{"database": secretToken})
+}
+
 // SDConfig is the configuration for file based discovery.
 type SDConfig struct {
-	DBConfig         map[string]interface{} `yaml:"database,omitempty"`
-	RefreshInterval  model.Duration         `yaml:"refresh_interval,omitempty"`
-	FilterConditions []FilterCondition      `yaml:"filter_conditions,omitempty"`
-	ServerPort       int                    `yaml:"server_port,omitempty"`
-	TagAlias         map[string]string      `yaml:"tag_alias,omitempty"`
+	DBConfig         DBConfig          `yaml:"database,omitempty"`
+	RefreshInterval  model.Duration    `yaml:"refresh_interval,omitempty"`
+	FilterConditions []FilterCondition `yaml:"filter_conditions,omitempty"`
+	ServerPort       int               `yaml:"server_port,omitempty"`
+	TagAlias         map[string]string `yaml:"tag_alias,omitempty"`
 }
 
 // FilterCondition 过滤器

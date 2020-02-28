@@ -10,8 +10,10 @@ type BzAlert struct {
 	Name       string    `xorm:"not null default '' VARCHAR(50)"`
 	CreatorErp string    `xorm:"not null default '' VARCHAR(50)"`
 	Expression string    `xorm:"TEXT"`
+	Title      string    `xorm:"VARCHAR(50)"`
+	Content    string    `xorm:"TEXT"`
 	Status     string    `xorm:"not null default '' VARCHAR(50)"`
-	Operator   string    `xorm:"comment('操作符') VARCHAR(45)"`
+	Operator   string    `xorm:"comment('操作符') VARCHAR(10)"`
 	IsUsing    int       `xorm:"not null default 0 TINYINT(1)"`
 	CreatedAt  time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
 	UpdatedAt  time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`

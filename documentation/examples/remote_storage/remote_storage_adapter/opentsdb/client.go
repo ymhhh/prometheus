@@ -72,7 +72,7 @@ func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Durati
 	u, _ = url.Parse(openRUrl)
 	u.Path = queryEndpoint
 	c.readUrl = u.String()
-	
+
 	return &c
 }
 
