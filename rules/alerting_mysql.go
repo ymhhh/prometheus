@@ -120,18 +120,13 @@ func (m *Manager) LoadMysqlGroups(
 
 	var alerts []models.BzAlert
 
-	if err := m.engine.Where("`is_using` = '1'").Find(&alerts); err != nil {
+	if err := m.engine.Where("`is_using` = ?", 1).Find(&alerts); err != nil {
 		return nil, []error{err}
 	}
 
 	for _, v := range alerts {
 		itv := interval
 		gkey := fmt.Sprintf("%s-%s", v.Name, v.Id)
-
-		expr, err := promql.ParseExpr(v.Expression)
-		if err != nil {
-			return nil, []error{errors.Wrap(err, gkey)}
-		}
 
 		var alertThresholds []models.BzAlertThreshold
 
@@ -141,15 +136,19 @@ func (m *Manager) LoadMysqlGroups(
 
 		var rules []Rule
 		for _, thrd := range alertThresholds {
+			exprStr := fmt.Sprintf("%s %s %f", v.Expression, v.Operator, thrd.Threshold)
+			expr, err := promql.ParseExpr(exprStr)
+			if err != nil {
+				return nil, []error{errors.Wrap(err, gkey+":"+exprStr)}
+			}
+
 			rLabels := map[string]string{
 				"alert_id":     v.Id,
 				"Threshold_id": thrd.Id,
 				"threshold":    fmt.Sprintf("%f", thrd.Threshold),
 				"severity":     thrd.Severity}
 
-			annotations := map[string]string{
-				"summary":     v.Title,
-				"description": v.Content}
+			annotations := map[string]string{"summary": v.Title, "description": v.Content}
 			rule := NewAlertingRule(
 				gkey,
 				expr,
@@ -158,7 +157,7 @@ func (m *Manager) LoadMysqlGroups(
 				labels.FromMap(annotations),
 				externalLabels,
 				m.restored,
-				log.With(m.logger, "alert_mysql", gkey),
+				log.With(m.logger, "alert_mysql", gkey, "expression", exprStr),
 			)
 			rules = append(rules, rule)
 		}
