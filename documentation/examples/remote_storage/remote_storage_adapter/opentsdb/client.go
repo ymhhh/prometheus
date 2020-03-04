@@ -42,6 +42,17 @@ const (
 	contentTypeJSON = "application/json"
 )
 
+// errMsg opentsdb error message
+type errMsg struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// errRet opentsdb error return
+type errRet struct {
+	Error errMsg `json:"error"`
+}
+
 // Client allows sending batches of Prometheus samples to OpenTSDB.
 type Client struct {
 	logger   log.Logger
@@ -152,6 +163,14 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 
 	var r map[string]int
 	if err := json.Unmarshal(buf, &r); err != nil {
+		st := errRet{}
+		err = json.Unmarshal(buf, &st)
+		if err != nil {
+			return 0, err
+		} else {
+			return 0, fmt.Errorf("code:%d msg:%s", st.Error.Code, st.Error.Message)
+		}
+
 		return 0, err
 	}
 	return r["success"], errors.Errorf("failed to write %d samples to OpenTSDB, %d succeeded", r["failed"], r["success"])
