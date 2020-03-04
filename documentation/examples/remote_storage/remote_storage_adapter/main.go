@@ -64,6 +64,7 @@ type config struct {
 	listenAddr              string
 	telemetryPath           string
 	promlogConfig           promlog.Config
+	regular                 string
 }
 
 var (
@@ -157,6 +158,8 @@ func parseFlags() *config {
 		Default(":9201").StringVar(&cfg.listenAddr)
 	a.Flag("web.telemetry-path", "Address to listen on for web endpoints.").
 		Default("/metrics").StringVar(&cfg.telemetryPath)
+	a.Flag("regular", "The program support regular expression. 0-false 1-true").
+		Default("0").StringVar(&cfg.regular)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 
@@ -191,11 +194,16 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 		writers = append(writers, c)
 	}
 	if cfg.opentsdbWURL != "" || cfg.opentsdbRURL != "" {
+		isRe := false
+		if cfg.regular == "1" {
+			isRe = true
+		}
 		c := opentsdb.NewClient(
 			log.With(logger, "storage", "OpenTSDB"),
 			cfg.opentsdbWURL,
 			cfg.opentsdbRURL,
 			cfg.remoteTimeout,
+			isRe,
 		)
 		writers = append(writers, c)
 		readers = append(readers, c)

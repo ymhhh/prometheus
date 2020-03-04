@@ -157,14 +157,28 @@ func (tv *TagValue) UnmarshalJSON(json []byte) error {
 	return nil
 }
 
-func toTagValue(tv string) string {
+func toTagValue(tv string, isRe bool) string {
 	length := len(tv)
 	if length == 0 {
 		return "_-" // defaultEmptyTagValue
 	}
+	mReg := map[byte]bool{
+		'*': true,
+		'|': true,
+	}
 	result := bytes.NewBuffer(make([]byte, 0, length))
 	for i := 0; i < length; i++ {
 		b := tv[i]
+		if isRe {
+			if b == '.' && i < length-1 && tv[i+1] == '*' {
+				result.WriteByte(b)
+				continue
+			} else if mReg[b] {
+				result.WriteByte(b)
+				continue
+			}
+		}
+
 		switch {
 		case (b >= '-' && b <= '9') || // '-', '.', '/', 0-9
 			(b >= 'A' && b <= 'Z') ||
