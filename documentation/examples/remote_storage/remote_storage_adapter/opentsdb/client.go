@@ -59,13 +59,15 @@ type Client struct {
 	timeout  time.Duration
 	writeUrl string
 	readUrl  string
+	isRe     bool
 }
 
 // NewClient creates a new Client.
-func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Duration) *Client {
+func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Duration, isRe bool) *Client {
 	c := Client{
 		logger:  logger,
 		timeout: timeout,
+		isRe:    isRe,
 	}
 
 	if openWUrl == "" {
@@ -185,7 +187,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	queryReqs := make([]*otdbQueryReq, 0, len(req.Queries))
 	smatchers := make(map[*otdbQueryReq]seriesMatcher)
 	for _, q := range req.Queries {
-		res, matcher, err := c.buildQueryReq(q)
+		res, matcher, err := c.buildQueryReq(q, c.isRe)
 		if err != nil {
 			return nil, err
 		}
@@ -298,7 +300,7 @@ loop:
 	return &resp, nil
 }
 
-func (c *Client) buildQueryReq(q *prompb.Query) (*otdbQueryReq, seriesMatcher, error) {
+func (c *Client) buildQueryReq(q *prompb.Query, isRe bool) (*otdbQueryReq, seriesMatcher, error) {
 	req := otdbQueryReq{
 		Start: q.GetStartTimestampMs() / 1000,
 		End:   q.GetEndTimestampMs() / 1000,
@@ -330,26 +332,38 @@ func (c *Client) buildQueryReq(q *prompb.Query) (*otdbQueryReq, seriesMatcher, e
 		switch m.Type {
 		case prompb.LabelMatcher_EQ:
 			ft.Type = otdbFilterTypeLiteralOr
-			ft.Filter = toTagValue(m.Value)
+			ft.Filter = toTagValue(m.Value, false)
 		case prompb.LabelMatcher_NEQ:
 			ft.Type = otdbFilterTypeNotLiteralOr
-			ft.Filter = toTagValue(m.Value)
+			ft.Filter = toTagValue(m.Value, false)
 		case prompb.LabelMatcher_RE:
-			ft.Type = otdbFilterTypeWildcard
-			ft.Filter = "*"
-			tmp, err := NewLabelMatcher(RegexMatch, m.Name, m.Value)
-			if err != nil {
-				return nil, nil, fmt.Errorf("create matcher error: %v", err)
+			if isRe {
+				// 目前支持带*或|的正则，如aa.*、aa.*|bb.*
+				ft.Type = otdbFilterTypeRegexp
+				ft.Filter = "^(?:" + toTagValue(m.Value, true) + ")$"
+			} else {
+				ft.Type = otdbFilterTypeWildcard
+				ft.Filter = "*"
+				tmp, err := NewLabelMatcher(RegexMatch, m.Name, m.Value)
+				if err != nil {
+					return nil, nil, fmt.Errorf("create matcher error: %v", err)
+				}
+				smatcher = append(smatcher, tmp)
 			}
-			smatcher = append(smatcher, tmp)
 		case prompb.LabelMatcher_NRE:
-			ft.Type = otdbFilterTypeWildcard
-			ft.Filter = "*"
-			tmp, err := NewLabelMatcher(RegexNoMatch, m.Name, m.Value)
-			if err != nil {
-				return nil, nil, fmt.Errorf("create matcher error: %v", err)
+			if isRe {
+				// 目前支持带*或|的正则，如aa.*、aa.*|bb.*
+				ft.Type = otdbFilterTypeRegexp
+				ft.Filter = "^((?!" + toTagValue(m.Value, true) + ").)*$"
+			} else {
+				ft.Type = otdbFilterTypeWildcard
+				ft.Filter = "*"
+				tmp, err := NewLabelMatcher(RegexNoMatch, m.Name, m.Value)
+				if err != nil {
+					return nil, nil, fmt.Errorf("create matcher error: %v", err)
+				}
+				smatcher = append(smatcher, tmp)
 			}
-			smatcher = append(smatcher, tmp)
 		default:
 			return nil, nil, fmt.Errorf("unknown match type %v", m.Type)
 		}
