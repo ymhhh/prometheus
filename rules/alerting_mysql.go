@@ -139,7 +139,7 @@ func (m *Manager) LoadMysqlGroups(
 			var exprStr string
 			switch v.Operator {
 			case "between": // 在阈值范围内
-				exprStr = fmt.Sprintf("%s > %f and %s < %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
+				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
 			case "not_between": // 在阈值范围内
 				exprStr = fmt.Sprintf("%s < %f or %s > %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
 			default:
