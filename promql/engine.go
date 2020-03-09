@@ -837,7 +837,7 @@ func (ev *evaluator) rangeEval(f func([]Value, *EvalNodeHelper) Vector, exprs ..
 							matrixes[i][si].Points = series.Points[1:]
 							ev.currentSamples++
 						} else {
-							ev.error(ErrTooManySamples(env))
+							ev.error(ErrTooManySamples(fmt.Sprintf("%s, %d, %d", env, ev.currentSamples, ev.maxSamples)))
 						}
 					}
 					break
