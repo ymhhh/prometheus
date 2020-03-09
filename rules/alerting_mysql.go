@@ -136,7 +136,15 @@ func (m *Manager) LoadMysqlGroups(
 
 		var rules []Rule
 		for _, thrd := range alertThresholds {
-			exprStr := fmt.Sprintf("%s %s %f", v.Expression, v.Operator, thrd.Threshold)
+			var exprStr string
+			switch v.Operator {
+			case "between": // 在阈值范围内
+				exprStr = fmt.Sprintf("%s > %f and %s < %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
+			case "not_between": // 在阈值范围内
+				exprStr = fmt.Sprintf("%s < %f or %s > %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
+			default:
+				exprStr = fmt.Sprintf("%s %s %f", v.Expression, v.Operator, thrd.Threshold)
+			}
 			expr, err := promql.ParseExpr(exprStr)
 			if err != nil {
 				return nil, []error{errors.Wrap(err, gkey+":"+exprStr)}

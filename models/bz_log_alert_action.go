@@ -15,5 +15,5 @@ type BzLogAlertAction struct {
 	Erps          string    `xorm:"VARCHAR(1000)"`
 	Title         string    `xorm:"comment('发送标题') VARCHAR(150)"`
 	Content       string    `xorm:"comment('发送的内容') VARCHAR(1500)"`
-	CreatedAt     time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
+	CreatedAt     time.Time `xorm:"not null default CURRENT_TIMESTAMP DATETIME"`
 }
