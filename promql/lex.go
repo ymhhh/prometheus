@@ -348,6 +348,7 @@ func lexStatements(l *Lexer) stateFn {
 			width: l.width,
 			//lastPos: l.lastPos,
 			itemp:       l.itemp,
+			scannedItem: l.scannedItem,
 			parenDepth:  l.parenDepth,
 			braceOpen:   l.braceOpen,
 			bracketOpen: l.bracketOpen,
@@ -355,6 +356,7 @@ func lexStatements(l *Lexer) stateFn {
 			stringOpen:  l.stringOpen,
 			seriesDesc:  l.seriesDesc,
 		}
+
 		isD = checkLexNumberOrDuration(&tl)
 	}
 
