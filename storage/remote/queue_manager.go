@@ -260,7 +260,7 @@ func NewQueueManager(reg prometheus.Registerer, logger log.Logger, walDir string
 		samplesOutDuration: newEWMARate(ewmaWeight, shardUpdateDuration),
 	}
 
-	t.watcher = wal.NewWatcher(reg, wal.NewWatcherMetrics(reg), logger, client.Name(), t, walDir)
+	t.watcher = wal.NewWatcher(reg, wal.NewWatcherMetrics(reg), logger, client.Name(), t, walDir, cfg.DataTimeout)
 	t.shards = t.newShards()
 
 	return t

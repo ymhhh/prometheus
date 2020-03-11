@@ -83,8 +83,8 @@ type Watcher struct {
 	// For testing, stop when we hit this segment.
 	MaxSegment int
 
-	// // Data timeout
-	// DataTimeout int64
+	// Data timeout
+	DataTimeout int64
 }
 
 func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
@@ -138,7 +138,7 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 }
 
 // NewWatcher creates a new WAL watcher for a given WriteTo.
-func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.Logger, name string, writer WriteTo, walDir string) *Watcher {
+func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.Logger, name string, writer WriteTo, walDir string, dataTimeout int64) *Watcher {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -153,6 +153,8 @@ func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.L
 		done:          make(chan struct{}),
 
 		MaxSegment: -1,
+
+		DataTimeout: dataTimeout,
 	}
 }
 
@@ -492,12 +494,18 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				return err
 			}
 			for _, s := range samples {
-				if s.T > w.startTimestamp {
-					if !w.sendSamples {
-						w.sendSamples = true
-						duration := time.Since(w.startTime)
-						level.Info(w.logger).Log("msg", "done replaying WAL", "duration", duration)
-					}
+				// if s.T > w.startTimestamp {
+				// 	if !w.sendSamples {
+				// 		w.sendSamples = true
+				// 		duration := time.Since(w.startTime)
+				// 		level.Info(w.logger).Log("msg", "done replaying WAL", "duration", duration)
+				// 	}
+				// 	send = append(send, s)
+				// }
+
+				if w.startTimestamp-s.T > w.DataTimeout*1000 {
+					level.Warn(w.logger).Log("msg", "Timestamp greater than start time", "T", s.T, "startTime", w.startTime, "dataTimeout", w.DataTimeout)
+				} else {
 					send = append(send, s)
 				}
 			}

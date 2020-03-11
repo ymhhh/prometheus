@@ -708,6 +708,9 @@ type QueueConfig struct {
 	// On recoverable errors, backoff exponentially.
 	MinBackoff model.Duration `yaml:"min_backoff,omitempty"`
 	MaxBackoff model.Duration `yaml:"max_backoff,omitempty"`
+
+	// Data Timeout (Unit:sec)
+	DataTimeout int64 `yaml:"data_timeout,omitempty"`
 }
 
 // RemoteReadConfig is the configuration for reading from remote storage.
