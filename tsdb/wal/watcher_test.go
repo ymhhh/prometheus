@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/util/testutil"
 )
@@ -138,8 +138,8 @@ func TestTailSamples(t *testing.T) {
 			testutil.Ok(t, err)
 
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
-			watcher.StartTime = now.UnixNano()
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
+			watcher.SetStartTime(now)
 
 			// Set the Watcher's metrics so they're not nil pointers.
 			watcher.setMetrics()
@@ -217,7 +217,7 @@ func TestReadToEndNoCheckpoint(t *testing.T) {
 			testutil.Ok(t, err)
 
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
 			go watcher.Start()
 
 			expected := seriesCount
@@ -303,7 +303,7 @@ func TestReadToEndWithCheckpoint(t *testing.T) {
 			_, _, err = w.Segments()
 			testutil.Ok(t, err)
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
 			go watcher.Start()
 
 			expected := seriesCount * 2
@@ -368,7 +368,7 @@ func TestReadCheckpoint(t *testing.T) {
 			testutil.Ok(t, err)
 
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
 			go watcher.Start()
 
 			expectedSeries := seriesCount
@@ -427,6 +427,7 @@ func TestReadCheckpointMultipleSegments(t *testing.T) {
 					}
 				}
 			}
+			testutil.Ok(t, w.Close())
 
 			// At this point we should have at least 6 segments, lets create a checkpoint dir of the first 5.
 			checkpointDir := dir + "/wal/checkpoint.000004"
@@ -438,7 +439,7 @@ func TestReadCheckpointMultipleSegments(t *testing.T) {
 			}
 
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
 			watcher.MaxSegment = -1
 
 			// Set the Watcher's metrics so they're not nil pointers.
@@ -509,7 +510,7 @@ func TestCheckpointSeriesReset(t *testing.T) {
 			testutil.Ok(t, err)
 
 			wt := newWriteToMock()
-			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir, 0)
+			watcher := NewWatcher(nil, wMetrics, nil, "", wt, dir)
 			watcher.MaxSegment = -1
 			go watcher.Start()
 

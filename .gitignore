@@ -3,18 +3,14 @@
 /*.yaml
 /*.yml
 *.exe
-/tsdb/tsdb
-.idea
 
 /prometheus
 /promtool
+/tsdb/tsdb
 benchmark.txt
 /data
 /cmd/prometheus/data
 /cmd/prometheus/debug
-/etc
-/bin
-/log
 
 !/.travis.yml
 !/.promu.yml

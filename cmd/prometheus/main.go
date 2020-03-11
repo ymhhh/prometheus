@@ -33,9 +33,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/prometheus/util"
-	"github.com/prometheus/prometheus/web/ui"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	conntrack "github.com/mwitkow/go-conntrack"
@@ -53,6 +50,7 @@ import (
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/logging"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	prom_runtime "github.com/prometheus/prometheus/pkg/runtime"
 	"github.com/prometheus/prometheus/promql"
@@ -61,8 +59,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/tsdb"
+	"github.com/prometheus/prometheus/util"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/prometheus/prometheus/web"
+	"github.com/prometheus/prometheus/web/ui"
 )
 
 var (
@@ -379,7 +379,6 @@ func main() {
 		opts = promql.EngineOpts{
 			Logger:             log.With(logger, "component", "query engine"),
 			Reg:                prometheus.DefaultRegisterer,
-			MaxConcurrent:      cfg.queryConcurrency,
 			MaxSamples:         cfg.queryMaxSamples,
 			Timeout:            time.Duration(cfg.queryTimeout),
 			ActiveQueryTracker: promql.NewActiveQueryTracker(cfg.localStoragePath, cfg.queryConcurrency, log.With(logger, "component", "activeQueryTracker")),
@@ -446,6 +445,20 @@ func main() {
 	switch cfg.role {
 	case roleAlert:
 		reloaders = []func(cfg *config.Config) error{
+			webHandler.ApplyConfig,
+			func(cfg *config.Config) error {
+				if cfg.GlobalConfig.QueryLogFile == "" {
+					queryEngine.SetQueryLogger(nil)
+					return nil
+				}
+
+				l, err := logging.NewJSONFileLogger(cfg.GlobalConfig.QueryLogFile)
+				if err != nil {
+					return err
+				}
+				queryEngine.SetQueryLogger(l)
+				return nil
+			},
 			scrapeManager.ApplyConfig,
 			func(cfg *config.Config) error {
 				c := make(map[string]sd_config.ServiceDiscoveryConfig)
@@ -507,6 +520,19 @@ func main() {
 		reloaders = []func(cfg *config.Config) error{
 			remoteStorage.ApplyConfig,
 			webHandler.ApplyConfig,
+			func(cfg *config.Config) error {
+				if cfg.GlobalConfig.QueryLogFile == "" {
+					queryEngine.SetQueryLogger(nil)
+					return nil
+				}
+
+				l, err := logging.NewJSONFileLogger(cfg.GlobalConfig.QueryLogFile)
+				if err != nil {
+					return err
+				}
+				queryEngine.SetQueryLogger(l)
+				return nil
+			},
 			// The Scrape and notifier managers need to reload before the Discovery manager as
 			// they need to read the most updated config when receiving the new targets list.
 			scrapeManager.ApplyConfig,
@@ -525,6 +551,7 @@ func main() {
 				}
 				return discoveryKaManagerScrape.ApplyConfig(c)
 			},
+
 			notifierManager.ApplyConfig,
 			func(cfg *config.Config) error {
 				c := make(map[string]sd_config.ServiceDiscoveryConfig)
@@ -604,12 +631,10 @@ func main() {
 				case <-term:
 					level.Warn(logger).Log("msg", "Received SIGTERM, exiting gracefully...")
 					reloadReady.Close()
-
 				case <-webHandler.Quit():
 					level.Warn(logger).Log("msg", "Received termination request via web service, exiting gracefully...")
 				case <-cancel:
 					reloadReady.Close()
-					break
 				}
 				return nil
 			},

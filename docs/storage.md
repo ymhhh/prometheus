@@ -53,7 +53,7 @@ For further details on file format, see [TSDB format](https://github.com/prometh
 
 The initial two-hour blocks are eventually compacted into longer blocks in the background.
 
-Compaction will create larger blocks up to 10% of the retention time, or 21 days, whichever is smaller.
+Compaction will create larger blocks up to 10% of the retention time, or 31 days, whichever is smaller.
 
 ## Operational aspects
 
@@ -77,7 +77,7 @@ If your local storage becomes corrupted for whatever reason, your best bet is to
 
 If both time and size retention policies are specified, whichever policy triggers first will be used at that instant.
 
-Expired block cleanup happens on a background schedule. It may take up to two hours remove expired blocks. Expired blocks must be fully expired before they are cleaned up.
+Expired block cleanup happens on a background schedule. It may take up to two hours to remove expired blocks. Expired blocks must be fully expired before they are cleaned up.
 
 ## Remote storage integrations
 

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"strings"
@@ -79,6 +80,7 @@ func (p *AdapterConfig) init(opts ...Option) (err error) {
 		}
 	}
 	if err != nil {
+		fmt.Println(err)
 		return ErrValueNil
 	}
 

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/prometheus/prometheus/tsdb/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var allPostingsKey = labels.Label{}
@@ -96,12 +96,12 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 
 	metrics := &maxHeap{}
 	labels := &maxHeap{}
-	labelValueLenght := &maxHeap{}
+	labelValueLength := &maxHeap{}
 	labelValuePairs := &maxHeap{}
 
 	metrics.init(maxNumOfRecords)
 	labels.init(maxNumOfRecords)
-	labelValueLenght.init(maxNumOfRecords)
+	labelValueLength.init(maxNumOfRecords)
 	labelValuePairs.init(maxNumOfRecords)
 
 	for n, e := range p.m {
@@ -117,7 +117,7 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 			labelValuePairs.push(Stat{Name: n + "=" + name, Count: uint64(len(values))})
 			size += uint64(len(name))
 		}
-		labelValueLenght.push(Stat{Name: n, Count: size})
+		labelValueLength.push(Stat{Name: n, Count: size})
 	}
 
 	p.mtx.RUnlock()
@@ -125,7 +125,7 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 	return &PostingsStats{
 		CardinalityMetricsStats: metrics.get(),
 		CardinalityLabelStats:   labels.get(),
-		LabelValueStats:         labelValueLenght.get(),
+		LabelValueStats:         labelValueLength.get(),
 		LabelValuePairsStats:    labelValuePairs.get(),
 	}
 }
@@ -453,10 +453,10 @@ func (h *postingsHeap) Pop() interface{} {
 }
 
 type mergedPostings struct {
-	h          postingsHeap
-	initilized bool
-	cur        uint64
-	err        error
+	h           postingsHeap
+	initialized bool
+	cur         uint64
+	err         error
 }
 
 func newMergedPostings(p []Postings) (m *mergedPostings, nonEmpty bool) {
@@ -485,10 +485,10 @@ func (it *mergedPostings) Next() bool {
 	}
 
 	// The user must issue an initial Next.
-	if !it.initilized {
+	if !it.initialized {
 		heap.Init(&it.h)
 		it.cur = it.h[0].At()
-		it.initilized = true
+		it.initialized = true
 		return true
 	}
 
@@ -519,7 +519,7 @@ func (it *mergedPostings) Seek(id uint64) bool {
 	if it.h.Len() == 0 || it.err != nil {
 		return false
 	}
-	if !it.initilized {
+	if !it.initialized {
 		if !it.Next() {
 			return false
 		}

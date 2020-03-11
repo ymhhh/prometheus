@@ -68,7 +68,9 @@ type Watcher struct {
 	metrics        *WatcherMetrics
 	readerMetrics  *liveReaderMetrics
 
-	StartTime int64
+	startTime      time.Time
+	startTimestamp int64 // the start time as a Prometheus timestamp
+	sendSamples    bool
 
 	recordsReadMetric       *prometheus.CounterVec
 	recordDecodeFailsMetric prometheus.Counter
@@ -81,8 +83,8 @@ type Watcher struct {
 	// For testing, stop when we hit this segment.
 	MaxSegment int
 
-	// Data timeout
-	DataTimeout int64
+	// // Data timeout
+	// DataTimeout int64
 }
 
 func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
@@ -136,7 +138,7 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 }
 
 // NewWatcher creates a new WAL watcher for a given WriteTo.
-func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.Logger, name string, writer WriteTo, walDir string, dataTimeout int64) *Watcher {
+func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.Logger, name string, writer WriteTo, walDir string) *Watcher {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -150,8 +152,7 @@ func NewWatcher(reg prometheus.Registerer, metrics *WatcherMetrics, logger log.L
 		quit:          make(chan struct{}),
 		done:          make(chan struct{}),
 
-		MaxSegment:  -1,
-		DataTimeout: dataTimeout,
+		MaxSegment: -1,
 	}
 }
 
@@ -195,7 +196,7 @@ func (w *Watcher) loop() {
 
 	// We may encounter failures processing the WAL; we should wait and retry.
 	for !isClosed(w.quit) {
-		w.StartTime = timestamp.FromTime(time.Now())
+		w.SetStartTime(time.Now())
 		if err := w.Run(); err != nil {
 			level.Error(w.logger).Log("msg", "error tailing WAL", "err", err)
 		}
@@ -215,6 +216,12 @@ func (w *Watcher) Run() error {
 	if err != nil {
 		return errors.Wrap(err, "wal.Segments")
 	}
+
+	// We want to ensure this is false across iterations since
+	// Run will be called again if there was a failure to read the WAL.
+	w.sendSamples = false
+
+	level.Info(w.logger).Log("msg", "replaying WAL", "queue", w.name)
 
 	// Backfill from the checkpoint first if it exists.
 	lastCheckpoint, checkpointIndex, err := LastCheckpoint(w.walDir)
@@ -460,7 +467,6 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 		samples []record.RefSample
 		send    []record.RefSample
 	)
-
 	for r.Next() && !isClosed(w.quit) {
 		rec := r.Record()
 		w.recordsReadMetric.WithLabelValues(recordType(dec.Type(rec))).Inc()
@@ -486,9 +492,12 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				return err
 			}
 			for _, s := range samples {
-				if w.StartTime-s.T > w.DataTimeout*1000 {
-					level.Warn(w.logger).Log("msg", "Timestamp greater than start time", "T", s.T, "startTime", w.StartTime, "dataTimeout", w.DataTimeout)
-				} else {
+				if s.T > w.startTimestamp {
+					if !w.sendSamples {
+						w.sendSamples = true
+						duration := time.Since(w.startTime)
+						level.Info(w.logger).Log("msg", "done replaying WAL", "duration", duration)
+					}
 					send = append(send, s)
 				}
 			}
@@ -509,6 +518,11 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 		}
 	}
 	return r.Err()
+}
+
+func (w *Watcher) SetStartTime(t time.Time) {
+	w.startTime = t
+	w.startTimestamp = timestamp.FromTime(t)
 }
 
 func recordType(rt record.Type) string {
