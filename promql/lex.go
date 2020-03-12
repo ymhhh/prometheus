@@ -424,7 +424,8 @@ func lexStatements(l *Lexer) stateFn {
 	case r == '`':
 		l.stringOpen = r
 		return lexRawString
-	case isAlpha(r) || r == ':':
+	// case isAlpha(r) || r == ':':
+	case isAlphaNumeric(r) || r == ':':
 		if !l.bracketOpen {
 			l.backup()
 			return lexKeywordOrIdentifier
@@ -485,7 +486,8 @@ func lexInsideBraces(l *Lexer) stateFn {
 		return l.errorf("unexpected end of input inside braces")
 	case isSpace(r):
 		return lexSpace
-	case isAlpha(r):
+	// case isAlpha(r):
+	case isAlphaNumeric(r):
 		l.backup()
 		return lexIdentifier
 	case r == ',':
