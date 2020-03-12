@@ -121,9 +121,6 @@ var (
 		// Backoff times for retrying a batch of samples on recoverable errors.
 		MinBackoff: model.Duration(30 * time.Millisecond),
 		MaxBackoff: model.Duration(100 * time.Millisecond),
-
-		// Data timeout
-		DataTimeout: 0,
 	}
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
@@ -300,15 +297,27 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 		jobNames[scfg.JobName] = struct{}{}
 	}
+	rwNames := map[string]struct{}{}
 	for _, rwcfg := range c.RemoteWriteConfigs {
 		if rwcfg == nil {
 			return errors.New("empty or null remote write config section")
 		}
+		// Skip empty names, we fill their name with their config hash in remote write code.
+		if _, ok := rwNames[rwcfg.Name]; ok && rwcfg.Name != "" {
+			return errors.Errorf("found multiple remote write configs with job name %q", rwcfg.Name)
+		}
+		rwNames[rwcfg.Name] = struct{}{}
 	}
+	rrNames := map[string]struct{}{}
 	for _, rrcfg := range c.RemoteReadConfigs {
 		if rrcfg == nil {
 			return errors.New("empty or null remote read config section")
 		}
+		// Skip empty names, we fill their name with their config hash in remote read code.
+		if _, ok := rrNames[rrcfg.Name]; ok && rrcfg.Name != "" {
+			return errors.Errorf("found multiple remote read configs with job name %q", rrcfg.Name)
+		}
+		rrNames[rrcfg.Name] = struct{}{}
 	}
 	return nil
 }
@@ -322,6 +331,8 @@ type GlobalConfig struct {
 	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval model.Duration `yaml:"evaluation_interval,omitempty"`
+	// File to which PromQL queries are logged.
+	QueryLogFile string `yaml:"query_log_file,omitempty"`
 	// The labels to add to any timeseries that this Prometheus instance scrapes.
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty"`
 }
@@ -372,7 +383,8 @@ func (c *GlobalConfig) isZero() bool {
 	return c.ExternalLabels == nil &&
 		c.ScrapeInterval == 0 &&
 		c.ScrapeTimeout == 0 &&
-		c.EvaluationInterval == 0
+		c.EvaluationInterval == 0 &&
+		c.QueryLogFile == ""
 }
 
 type KaConfig struct {
@@ -480,8 +492,8 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // AlertingConfig configures alerting and alertmanager related configs.
 type AlertingConfig struct {
-	AlertRelabelConfigs []*relabel.Config     `yaml:"alert_relabel_configs,omitempty"`
-	AlertmanagerConfigs []*AlertmanagerConfig `yaml:"alertmanagers,omitempty"`
+	AlertRelabelConfigs []*relabel.Config   `yaml:"alert_relabel_configs,omitempty"`
+	AlertmanagerConfigs AlertmanagerConfigs `yaml:"alertmanagers,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -500,6 +512,18 @@ func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		}
 	}
 	return nil
+}
+
+// AlertmanagerConfigs is a slice of *AlertmanagerConfig.
+type AlertmanagerConfigs []*AlertmanagerConfig
+
+// ToMap converts a slice of *AlertmanagerConfig to a map.
+func (a AlertmanagerConfigs) ToMap() map[string]*AlertmanagerConfig {
+	ret := make(map[string]*AlertmanagerConfig)
+	for i := range a {
+		ret[fmt.Sprintf("config-%d", i)] = a[i]
+	}
+	return ret
 }
 
 // AlertmanagerAPIVersion represents a version of the
@@ -632,6 +656,7 @@ type RemoteWriteConfig struct {
 	URL                 *config_util.URL  `yaml:"url"`
 	RemoteTimeout       model.Duration    `yaml:"remote_timeout,omitempty"`
 	WriteRelabelConfigs []*relabel.Config `yaml:"write_relabel_configs,omitempty"`
+	Name                string            `yaml:"name,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -684,7 +709,7 @@ type QueueConfig struct {
 	MinBackoff model.Duration `yaml:"min_backoff,omitempty"`
 	MaxBackoff model.Duration `yaml:"max_backoff,omitempty"`
 
-	// Data timeout (Unit: sec)
+	// Data Timeout (Unit:sec)
 	DataTimeout int64 `yaml:"data_timeout,omitempty"`
 }
 
@@ -693,6 +718,8 @@ type RemoteReadConfig struct {
 	URL           *config_util.URL `yaml:"url"`
 	RemoteTimeout model.Duration   `yaml:"remote_timeout,omitempty"`
 	ReadRecent    bool             `yaml:"read_recent,omitempty"`
+	Name          string           `yaml:"name,omitempty"`
+
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
 	HTTPClientConfig config_util.HTTPClientConfig `yaml:",inline"`

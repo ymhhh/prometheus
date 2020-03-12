@@ -6,9 +6,9 @@ require (
 	contrib.go.opencensus.io/exporter/ocagent v0.6.0 // indirect
 	github.com/Azure/azure-sdk-for-go v23.2.0+incompatible
 	github.com/Azure/go-autorest v11.2.8+incompatible
-	github.com/Shopify/sarama v1.24.1
+	github.com/Shopify/sarama v1.26.1
 	github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4
-	github.com/aws/aws-sdk-go v1.23.12
+	github.com/aws/aws-sdk-go v1.25.48
 	github.com/cespare/xxhash v1.1.0
 	github.com/dgryski/go-sip13 v0.0.0-20190329191031-25c5027a8c7b
 	github.com/edsrzf/mmap-go v1.0.0
@@ -28,7 +28,6 @@ require (
 	github.com/influxdata/influxdb v1.7.7
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.7
-	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/miekg/dns v1.1.15
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/oklog/run v1.0.0
@@ -39,13 +38,13 @@ require (
 	github.com/prometheus/alertmanager v0.18.0
 	github.com/prometheus/client_golang v1.2.0
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
-	github.com/prometheus/common v0.7.0
+	github.com/prometheus/common v0.8.0
 	github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/soheilhy/cmux v0.1.4
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
-	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80
+	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	golang.org/x/sys v0.0.0-20191010194322-b09406accb47
@@ -56,7 +55,8 @@ require (
 	google.golang.org/grpc v1.22.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
-	gopkg.in/yaml.v2 v2.2.7
+	gopkg.in/yaml.v2 v2.2.8
+	gopkg.in/yaml.v3 v3.0.0-20191120175047-4206685974f2
 	k8s.io/api v0.0.0-20190813020757-36bff7324fb7
 	k8s.io/apimachinery v0.0.0-20190809020650-423f5d784010
 	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

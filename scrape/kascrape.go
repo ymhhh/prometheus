@@ -19,6 +19,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -29,10 +34,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util"
 	"github.com/xdg/scram"
-	"hash"
-	"strings"
-	"sync"
-	"time"
 )
 
 var (
