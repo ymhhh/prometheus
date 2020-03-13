@@ -200,7 +200,8 @@ var tests = []struct {
 				expected: []Item{{METRIC_IDENTIFIER, 0, ":bc"}},
 			}, {
 				input: "0a:bc",
-				fail:  true,
+				// fail:  true,
+				expected: []Item{{METRIC_IDENTIFIER, 0, "0a:bc"}},
 			},
 		},
 	},
@@ -346,7 +347,14 @@ var tests = []struct {
 				fail:  true,
 			}, {
 				input: `{0a='a'}`,
-				fail:  true,
+				// fail:  true,
+				expected: []Item{
+					{LEFT_BRACE, 0, `{`},
+					{IDENTIFIER, 1, `0a`},
+					{EQL, 3, `=`},
+					{STRING, 4, `'a'`},
+					{RIGHT_BRACE, 7, `}`},
+				},
 			}, {
 				input: `{foo='bar'}`,
 				expected: []Item{
@@ -417,9 +425,10 @@ var tests = []struct {
 				input: `!~`, fail: true,
 			}, {
 				input: `!(`, fail: true,
-			}, {
-				input: "1a", fail: true,
 			},
+			// {
+			// 	input: "1a", fail: true,
+			// },
 		},
 	},
 	{

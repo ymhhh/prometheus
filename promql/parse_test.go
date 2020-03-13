@@ -1442,11 +1442,13 @@ var testExpr = []struct {
 		input:  `foo{gibberish}`,
 		fail:   true,
 		errMsg: `unexpected "}" in label matching, expected label matching operator`,
-	}, {
-		input:  `foo{1}`,
-		fail:   true,
-		errMsg: "unexpected character inside braces: '1'",
-	}, {
+	},
+	// {
+	// 	input:  `foo{1}`,
+	// 	fail:   true,
+	// 	errMsg: "unexpected character inside braces: '1'",
+	// },
+	{
 		input:  `{}`,
 		fail:   true,
 		errMsg: "vector selector must contain at least one non-empty matcher",
