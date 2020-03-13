@@ -15,55 +15,59 @@
 
 package ui
 
-import (
-	"net/http"
-	"os"
-	"path"
-	"strings"
+import "net/http"
 
-	"github.com/shurcooL/httpfs/filter"
-	"github.com/shurcooL/httpfs/union"
-)
+// import (
+// 	"net/http"
+// 	"os"
+// 	"path"
+// 	"strings"
 
-// Assets contains the project's assets.
-var Assets http.FileSystem = func() http.FileSystem {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	var assetsPrefix string
-	switch path.Base(wd) {
-	case "prometheus":
-		// When running Prometheus (without built-in assets) from the repo root.
-		assetsPrefix = "./web/ui"
-	case "web":
-		// When running web tests.
-		assetsPrefix = "./ui"
-	case "ui":
-		// When generating statically compiled-in assets.
-		assetsPrefix = "./"
-	}
+// 	"github.com/shurcooL/httpfs/filter"
+// 	"github.com/shurcooL/httpfs/union"
+// )
 
-	static := filter.Keep(
-		http.Dir(path.Join(assetsPrefix, "static")),
-		func(path string, fi os.FileInfo) bool {
-			return fi.IsDir() ||
-				(!strings.HasSuffix(path, "map.js") &&
-					!strings.HasSuffix(path, "/bootstrap.js") &&
-					!strings.HasSuffix(path, "/bootstrap-theme.css") &&
-					!strings.HasSuffix(path, "/bootstrap.css"))
-		},
-	)
+// // Assets contains the project's assets.
+// var Assets http.FileSystem = func() http.FileSystem {
+// 	wd, err := os.Getwd()
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	var assetsPrefix string
+// 	switch path.Base(wd) {
+// 	case "prometheus":
+// 		// When running Prometheus (without built-in assets) from the repo root.
+// 		assetsPrefix = "./web/ui"
+// 	case "web":
+// 		// When running web tests.
+// 		assetsPrefix = "./ui"
+// 	case "ui":
+// 		// When generating statically compiled-in assets.
+// 		assetsPrefix = "./"
+// 	}
 
-	templates := filter.Keep(
-		http.Dir(path.Join(assetsPrefix, "templates")),
-		func(path string, fi os.FileInfo) bool {
-			return fi.IsDir() || strings.HasSuffix(path, ".html")
-		},
-	)
+// 	static := filter.Keep(
+// 		http.Dir(path.Join(assetsPrefix, "static")),
+// 		func(path string, fi os.FileInfo) bool {
+// 			return fi.IsDir() ||
+// 				(!strings.HasSuffix(path, "map.js") &&
+// 					!strings.HasSuffix(path, "/bootstrap.js") &&
+// 					!strings.HasSuffix(path, "/bootstrap-theme.css") &&
+// 					!strings.HasSuffix(path, "/bootstrap.css"))
+// 		},
+// 	)
 
-	return union.New(map[string]http.FileSystem{
-		"/templates": templates,
-		"/static":    static,
-	})
-}()
+// 	templates := filter.Keep(
+// 		http.Dir(path.Join(assetsPrefix, "templates")),
+// 		func(path string, fi os.FileInfo) bool {
+// 			return fi.IsDir() || strings.HasSuffix(path, ".html")
+// 		},
+// 	)
+
+// 	return union.New(map[string]http.FileSystem{
+// 		"/templates": templates,
+// 		"/static":    static,
+// 	})
+// }()
+
+var Assets http.FileSystem

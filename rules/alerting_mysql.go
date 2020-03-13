@@ -115,12 +115,40 @@ func (m *Manager) LoadMysqlGroups(
 	interval time.Duration, externalLabels labels.Labels,
 ) (map[string]*Group, []error) {
 
-	groups := make(map[string]*Group)
 	shouldRestore := !m.restored
 
-	var alerts []models.BzAlert
+	var monitors []*models.BzMonitor
+	if err := m.engine.Where("`is_using` = ?", 1).Find(&monitors); err != nil {
+		return nil, []error{err}
+	}
 
-	if err := m.engine.Where("`is_using` = ?", 1).Find(&alerts); err != nil {
+	groups := make(map[string]*Group)
+	for _, monitor := range monitors {
+		var monitorLabels []*models.BzMonitorLabels
+		if err := m.engine.Where("`monitor_id` = ?", monitor.Id).Find(&monitorLabels); err != nil {
+			return nil, []error{err}
+		}
+
+		monitorGroups, errs := m.loadMonitorGroups(monitor, monitorLabels, interval, externalLabels, shouldRestore)
+		if len(errs) != 0 {
+			return nil, errs
+		}
+		for key, value := range monitorGroups {
+			groups[key] = value
+		}
+	}
+
+	return groups, nil
+}
+
+func (m *Manager) loadMonitorGroups(
+	monitor *models.BzMonitor, mLabels []*models.BzMonitorLabels,
+	interval time.Duration, externalLabels labels.Labels, shouldRestore bool,
+) (map[string]*Group, []error) {
+
+	groups := make(map[string]*Group)
+	var alerts []*models.BzAlert
+	if err := m.engine.Where("`is_using` = ?", 1).And("`monitor_id` = ?", monitor.Id).Find(&alerts); err != nil {
 		return nil, []error{err}
 	}
 
@@ -128,49 +156,76 @@ func (m *Manager) LoadMysqlGroups(
 		itv := interval
 		gkey := fmt.Sprintf("%s-%s", v.Name, v.Id)
 
-		var alertThresholds []models.BzAlertThreshold
-
+		var alertThresholds []*models.BzAlertThreshold
 		if err := m.engine.Where("`alert_id` = ?", v.Id).Find(&alertThresholds); err != nil {
 			return nil, []error{errors.Wrap(err, gkey)}
 		}
 
-		var rules []Rule
-		for _, thrd := range alertThresholds {
-			var exprStr string
-			switch v.Operator {
-			case "between": // 在阈值范围内
-				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
-			case "not_between": // 在阈值范围内
-				exprStr = fmt.Sprintf("%s < %f or %s > %f", v.Expression, thrd.Threshold, v.Expression, thrd.ThresholdMax)
-			default:
-				exprStr = fmt.Sprintf("%s %s %f", v.Expression, v.Operator, thrd.Threshold)
+		var alertRules []Rule
+		var exprStr string
+		switch len(mLabels) {
+		case 0:
+			exprStr = v.Expression
+			rules, errs := m.genAlertRules(v, alertThresholds, "NULL", exprStr, externalLabels)
+			if len(errs) != 0 {
+				return nil, errs
 			}
-			expr, err := promql.ParseExpr(exprStr)
-			if err != nil {
-				return nil, []error{errors.Wrap(err, gkey+":"+exprStr)}
+			alertRules = append(alertRules, rules...)
+		default:
+			for _, mLabel := range mLabels {
+				exprStr = fmt.Sprintf("%s%s", v.Expression, mLabel.Labels)
+				rules, errs := m.genAlertRules(v, alertThresholds, mLabel.Id, exprStr, externalLabels)
+				if len(errs) != 0 {
+					return nil, errs
+				}
+				alertRules = append(alertRules, rules...)
 			}
-
-			rLabels := map[string]string{
-				"alert_id":     v.Id,
-				"Threshold_id": thrd.Id,
-				"threshold":    fmt.Sprintf("%f", thrd.Threshold),
-				"severity":     thrd.Severity}
-
-			annotations := map[string]string{"summary": v.Title, "description": v.Content}
-			rule := NewAlertingRule(
-				gkey,
-				expr,
-				formats.ParseStringTime(thrd.For),
-				labels.FromMap(rLabels),
-				labels.FromMap(annotations),
-				externalLabels,
-				m.restored,
-				log.With(m.logger, "alert_mysql", gkey, "expression", exprStr),
-			)
-			rules = append(rules, rule)
 		}
-		groups[gkey] = NewGroup(v.Name, v.Id, itv, rules, shouldRestore, m.opts)
+
+		groups[gkey] = NewGroup(v.Name, v.Id, itv, alertRules, shouldRestore, m.opts)
 	}
 
-	return groups, nil
+	return nil, nil
+}
+
+func (m *Manager) genAlertRules(
+	alert *models.BzAlert, thrds []*models.BzAlertThreshold, mLabelID, exprStr string, externalLabels labels.Labels,
+) ([]Rule, []error) {
+	var rules []Rule
+	for _, thrd := range thrds {
+		switch alert.Operator {
+		case "between": // 在阈值范围内
+			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+		case "not_between": // 在阈值范围内
+			exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+		default:
+			exprStr = fmt.Sprintf("%s %s %f", exprStr, alert.Operator, thrd.Threshold)
+		}
+		expr, err := promql.ParseExpr(exprStr)
+		if err != nil {
+			return nil, []error{errors.Wrap(err, alert.Id+":"+exprStr)}
+		}
+
+		rLabels := map[string]string{
+			"alert_id":         alert.Id,
+			"Threshold_id":     thrd.Id,
+			"monitor_label_id": mLabelID,
+			"threshold":        fmt.Sprintf("%f", thrd.Threshold),
+			"severity":         thrd.Severity}
+
+		annotations := map[string]string{"summary": alert.Title, "description": alert.Content}
+		rule := NewAlertingRule(
+			alert.Id+":"+thrd.Id+":"+mLabelID,
+			expr,
+			formats.ParseStringTime(thrd.For),
+			labels.FromMap(rLabels),
+			labels.FromMap(annotations),
+			externalLabels,
+			m.restored,
+			log.With(m.logger, "alert_mysql", alert.Id, "expression", exprStr),
+		)
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
 }
