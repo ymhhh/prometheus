@@ -148,3 +148,20 @@ func CheckMetircName(name string) bool {
 	r, _ := regexp.Compile(`^[a-zA-Z0-9_:][a-zA-Z0-9_:]*$`)
 	return r.MatchString(name)
 }
+
+// IsValidMetricName returns true iff name matches the pattern of MetricNameRE.
+// This function, however, does not use MetricNameRE for the check but a much
+// faster hardcoded implementation.
+// from: vendor/githup.com/prometheus/common/models/metric.go
+func IsValidMetricName(n string) bool {
+	if len(n) == 0 {
+		return false
+	}
+	for _, b := range n {
+		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || b == ':' || (b >= '0' && b <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+

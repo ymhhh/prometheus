@@ -15,6 +15,7 @@ package rulefmt
 
 import (
 	"context"
+	"github.com/prometheus/prometheus/util"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -175,7 +176,8 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 				node: &r.Record,
 			})
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
+		//if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
+		if !util.IsValidMetricName(r.Record.Value) {
 			nodes = append(nodes, WrappedError{
 				err:  errors.Errorf("invalid recording rule name: %s", r.Record.Value),
 				node: &r.Record,
