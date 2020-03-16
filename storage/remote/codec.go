@@ -15,6 +15,7 @@ package remote
 
 import (
 	"fmt"
+	"github.com/prometheus/prometheus/util"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -438,7 +439,8 @@ func (c *concreteSeriesIterator) Err() error {
 // also making sure that there are no labels with duplicate names
 func validateLabelsAndMetricName(ls labels.Labels) error {
 	for i, l := range ls {
-		if l.Name == labels.MetricName && !model.IsValidMetricName(model.LabelValue(l.Value)) {
+		//if l.Name == labels.MetricName && !model.IsValidMetricName(model.LabelValue(l.Value)) {
+		if l.Name == labels.MetricName && !util.IsValidMetricName(l.Value) {
 			return errors.Errorf("invalid metric name: %v", l.Value)
 		}
 		if !model.LabelName(l.Name).IsValid() {
