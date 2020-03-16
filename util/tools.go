@@ -14,13 +14,14 @@
 package util
 
 import (
-	"github.com/shurcooL/httpfs/filter"
-	"github.com/shurcooL/httpfs/union"
 	"net/http"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/shurcooL/httpfs/filter"
+	"github.com/shurcooL/httpfs/union"
 )
 
 // SetAssets 设置ui.Assets使用，从ui里迁移过来
@@ -164,4 +165,3 @@ func IsValidMetricName(n string) bool {
 	}
 	return true
 }
-
