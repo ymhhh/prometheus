@@ -166,7 +166,7 @@ func (m *Manager) loadMonitorGroups(
 		switch len(mLabels) {
 		case 0:
 			exprStr = v.Expression
-			rules, errs := m.genAlertRules(v, alertThresholds, "NULL", exprStr, externalLabels)
+			rules, errs := m.genAlertRules(v, alertThresholds, "", exprStr, externalLabels)
 			if len(errs) != 0 {
 				return nil, errs
 			}
@@ -185,7 +185,7 @@ func (m *Manager) loadMonitorGroups(
 		groups[gkey] = NewGroup(v.Name, v.Id, itv, alertRules, shouldRestore, m.opts)
 	}
 
-	return nil, nil
+	return groups, nil
 }
 
 func (m *Manager) genAlertRules(
@@ -201,6 +201,7 @@ func (m *Manager) genAlertRules(
 		default:
 			exprStr = fmt.Sprintf("%s %s %f", exprStr, alert.Operator, thrd.Threshold)
 		}
+		level.Debug(m.logger).Log("rule expression", exprStr)
 		expr, err := promql.ParseExpr(exprStr)
 		if err != nil {
 			return nil, []error{errors.Wrap(err, alert.Id+":"+exprStr)}
