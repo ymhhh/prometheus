@@ -63,6 +63,8 @@
 //         "服务": "services"
 //         "硬盘": "disk"
 //         "负责人": "charge"
+//       exclude_server_ports:
+//         "127.0.0.1": 9100
 
 package mysql
 
@@ -92,6 +94,7 @@ var (
 	}
 )
 
+// DBConfig 数据库配置对象
 type DBConfig map[string]interface{}
 
 const secretToken = "<secret>"
@@ -114,11 +117,12 @@ func (p DBConfig) MarshalJSON() ([]byte, error) {
 
 // SDConfig is the configuration for file based discovery.
 type SDConfig struct {
-	DBConfig         DBConfig          `yaml:"database,omitempty"`
-	RefreshInterval  model.Duration    `yaml:"refresh_interval,omitempty"`
-	FilterConditions []FilterCondition `yaml:"filter_conditions,omitempty"`
-	ServerPort       int               `yaml:"server_port,omitempty"`
-	TagAlias         map[string]string `yaml:"tag_alias,omitempty"`
+	DBConfig           DBConfig          `yaml:"database,omitempty"`
+	RefreshInterval    model.Duration    `yaml:"refresh_interval,omitempty"`
+	FilterConditions   []FilterCondition `yaml:"filter_conditions,omitempty"`
+	ServerPort         int               `yaml:"server_port,omitempty"`
+	ExcludeServerPorts map[string]int    `yaml:"exclude_server_ports,omitempty"`
+	TagAlias           map[string]string `yaml:"tag_alias,omitempty"`
 }
 
 // FilterCondition 过滤器
@@ -158,6 +162,10 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		default:
 			return errors.New("mysql discovery config: filter condition operator must: 'eq' or 'like' or 'in'")
 		}
+	}
+
+	if c.ExcludeServerPorts == nil {
+		c.ExcludeServerPorts = make(map[string]int)
 	}
 
 	if (c.ServerPort) == 0 {
@@ -249,8 +257,13 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			}
 		}
 
+		port, ok := p.cfg.ExcludeServerPorts[server.IP]
+		if !ok {
+			port = p.cfg.ServerPort
+		}
+
 		group.Targets = append(group.Targets,
-			model.LabelSet{model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:%d", server.IP, p.cfg.ServerPort))})
+			model.LabelSet{model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:%d", server.IP, port))})
 
 		group.Labels = model.LabelSet{}
 
