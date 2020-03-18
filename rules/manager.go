@@ -867,6 +867,13 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 		}
 		return errors.New("error loading rules, previous rule set restored")
 	}
+
+	m.runGroups(groups)
+
+	return nil
+}
+
+func (m *Manager) runGroups(groups map[string]*Group) {
 	m.restored = true
 
 	var wg sync.WaitGroup
@@ -914,8 +921,6 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 
 	wg.Wait()
 	m.groups = groups
-
-	return nil
 }
 
 // LoadGroups reads groups from a list of files.
