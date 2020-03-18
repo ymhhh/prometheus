@@ -17,7 +17,6 @@ package rules
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -70,42 +69,8 @@ func (m *Manager) UpdateMysql(
 		}
 		return errors.New("error loading rules, previous rule set restored")
 	}
-	m.restored = true
 
-	var wg sync.WaitGroup
-
-	for _, newg := range groups {
-		wg.Add(1)
-
-		// If there is an old group with the same identifier, stop it and wait for
-		// it to finish the current iteration. Then copy it into the new group.
-		gn := groupKey(newg.name, newg.file)
-		oldg, ok := m.groups[gn]
-		delete(m.groups, gn)
-
-		go func(newg *Group) {
-			if ok {
-				oldg.stop()
-				newg.CopyState(oldg)
-			}
-			go func() {
-				// Wait with starting evaluation until the rule manager
-				// is told to run. This is necessary to avoid running
-				// queries against a bootstrapping storage.
-				<-m.block
-				newg.run(m.opts.Context)
-			}()
-			wg.Done()
-		}(newg)
-	}
-
-	// Stop remaining old groups.
-	for _, oldg := range m.groups {
-		oldg.stop()
-	}
-
-	wg.Wait()
-	m.groups = groups
+	m.runGroups(groups)
 
 	return nil
 }

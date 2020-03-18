@@ -517,9 +517,9 @@ func (n *Manager) sendAll(alerts ...*Alert) bool {
 			wg.Add(1)
 
 			ctx, cancel := context.WithTimeout(n.ctx, time.Duration(ams.cfg.Timeout))
-			defer cancel()
 
-			go func(client *http.Client, url string) {
+			go func(ctx context.Context, cancel context.CancelFunc, client *http.Client, url string) {
+				defer cancel()
 				if err := n.sendOne(ctx, client, url, payload); err != nil {
 					level.Error(n.logger).Log("alertmanager", url, "count", len(alerts), "msg", "Error sending alert", "err", err)
 					n.metrics.errors.WithLabelValues(url).Inc()
@@ -530,7 +530,7 @@ func (n *Manager) sendAll(alerts ...*Alert) bool {
 				n.metrics.sent.WithLabelValues(url).Add(float64(len(alerts)))
 
 				wg.Done()
-			}(ams.client, am.url().String())
+			}(ctx, cancel, ams.client, am.url().String())
 		}
 
 		ams.mtx.RUnlock()

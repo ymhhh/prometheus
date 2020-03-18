@@ -16,8 +16,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -478,13 +476,8 @@ func main() {
 			notifierManager.ApplyConfig,
 			func(cfg *config.Config) error {
 				c := make(map[string]sd_config.ServiceDiscoveryConfig)
-				for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
-					// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
-					b, err := json.Marshal(v)
-					if err != nil {
-						return err
-					}
-					c[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+				for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
+					c[k] = v.ServiceDiscoveryConfig
 				}
 				return discoveryManagerNotify.ApplyConfig(c)
 			},
@@ -551,17 +544,11 @@ func main() {
 				}
 				return discoveryKaManagerScrape.ApplyConfig(c)
 			},
-
 			notifierManager.ApplyConfig,
 			func(cfg *config.Config) error {
 				c := make(map[string]sd_config.ServiceDiscoveryConfig)
-				for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
-					// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
-					b, err := json.Marshal(v)
-					if err != nil {
-						return err
-					}
-					c[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+				for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
+					c[k] = v.ServiceDiscoveryConfig
 				}
 				return discoveryManagerNotify.ApplyConfig(c)
 			},
