@@ -173,6 +173,9 @@ func toTagValue(tv string, isRe bool) string {
 			if b == '.' && i < length-1 && tv[i+1] == '*' {
 				result.WriteByte(b)
 				continue
+			} else if b == '\\' && i < length-1 {
+				i++
+				b = tv[i]
 			} else if mReg[b] {
 				result.WriteByte(b)
 				continue
