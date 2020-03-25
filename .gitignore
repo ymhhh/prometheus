@@ -2,6 +2,7 @@
 .#*
 /*.yaml
 /*.yml
+/*.json
 *.exe
 /tsdb/tsdb
 .idea
