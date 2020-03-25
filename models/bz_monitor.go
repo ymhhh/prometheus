@@ -11,8 +11,8 @@ type BzMonitor struct {
 	Expression  string    `xorm:"comment('监控表达式') TEXT"`
 	Description string    `xorm:"VARCHAR(100)"`
 	Status      string    `xorm:"not null default '' comment('报警状态') index VARCHAR(50)"`
-	IsUsing     int       `xorm:"not null default 0 comment('是否启动：0否，1是') index TINYINT(1)"`
-	CreatedAt   time.Time `xorm:"not null default CURRENT_TIMESTAMP DATETIME"`
-	UpdatedAt   time.Time `xorm:"not null default CURRENT_TIMESTAMP DATETIME"`
-	Version     int       `xorm:"INT(11)"`
+	IsUsing     int32     `xorm:"not null default 0 comment('是否启动：0否，1是') index TINYINT(1)"`
+	CreatedAt   time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
+	UpdatedAt   time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
+	Version     int       `xorm:"version"`
 }

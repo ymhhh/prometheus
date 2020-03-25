@@ -9,5 +9,5 @@ type BzAlertGroup struct {
 	Name        string    `xorm:"not null default '' VARCHAR(100)"`
 	CreatorErp  string    `xorm:"not null default '' comment('创建人ERP') VARCHAR(50)"`
 	Description string    `xorm:"VARCHAR(100)"`
-	CreatedAt   time.Time `xorm:"default CURRENT_TIMESTAMP DATETIME"`
+	CreatedAt   time.Time `xorm:"default 'CURRENT_TIMESTAMP' DATETIME"`
 }
