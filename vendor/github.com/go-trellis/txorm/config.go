@@ -4,6 +4,7 @@
 package txorm
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/go-trellis/config"
@@ -31,6 +32,9 @@ func NewEnginesFromConfig(conf config.Config, name string) (map[string]*xorm.Eng
 	defer locker.Unlock()
 
 	cfg := conf.GetValuesConfig(name)
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
 
 	for _, databaseName := range cfg.GetKeys() {
 		_engine, err := xorm.NewEngine("mysql", GetMysqlDSNFromConfig(databaseName, cfg.GetValuesConfig(databaseName)))

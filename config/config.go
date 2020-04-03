@@ -141,6 +141,7 @@ type Config struct {
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
 
+	MysqlMetricStorage mysql.DBConfig `yaml:"mysql_metric_storage,omitempty"`
 	// original is the input from which the config was parsed.
 	original string
 }

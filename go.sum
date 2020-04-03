@@ -149,13 +149,13 @@ github.com/go-trellis/algorithm v1.0.1 h1:Y6Rc4jAc0U+XCItyBz1sVhMYJd/yvCxSMEQMTM
 github.com/go-trellis/algorithm v1.0.1/go.mod h1:mTHr1KB0rZ+W001GA0FwJNrdL11CcmUjUVoiVMQbTMw=
 github.com/go-trellis/common v1.3.1 h1:V9Ur/oex9YYPi5S4B05TEm6jKUcC2TkUA+87sWALnw0=
 github.com/go-trellis/common v1.3.1/go.mod h1:F8/nbQi4+N0F6H9fxPy1TJNGVFbCBF28RnK5otMIiac=
-github.com/go-trellis/config v1.3.5 h1:WMxk195OkH+MA+rbwBY0AStSE8+c4HawgmsMWzd+/RY=
-github.com/go-trellis/config v1.3.5/go.mod h1:UNsWctQuDliyqAVj0XRSm1kwuQa5PiTECyzULfSgqfo=
+github.com/go-trellis/config v1.3.6 h1:wW5uM2dzkDU8sxRjUEJB0K89BjjizUb6Py8U8LsWWYk=
+github.com/go-trellis/config v1.3.6/go.mod h1:UNsWctQuDliyqAVj0XRSm1kwuQa5PiTECyzULfSgqfo=
 github.com/go-trellis/errors v1.0.0 h1:kiPcFvXUr7y5MgqwDPHqUALuUAxnH88XTsOHB8w7TnU=
 github.com/go-trellis/errors v1.0.0/go.mod h1:aOsfV2Uv0cCP0WPBWUcCphWAVOG14mXIsFQ9k7a3hCg=
 github.com/go-trellis/files v0.0.0-20170309073846-c9ce6f0c11b5/go.mod h1:OD4pGROqjWafGfqt393eK3zSCiLOUDfb+0tHiiy4LcA=
-github.com/go-trellis/txorm v1.0.1 h1:YQ5suHfbf9GvdHFjtxozlRoiqncWiFMIOaJbpzkcBp0=
-github.com/go-trellis/txorm v1.0.1/go.mod h1:9T+rxhhMHyaSqBz4yfyPZyqRLC4MD71wQhRt3fHGzec=
+github.com/go-trellis/txorm v1.0.2 h1:cAkjCWP9z9oNwSk/5/877KiSOf+HIC3JZ45M/fg3IwI=
+github.com/go-trellis/txorm v1.0.2/go.mod h1:8LBnCCpr9XZx4KyqV5m7WgoOsfNIy3nuE1RY8PbFk04=
 github.com/go-xorm/sqlfiddle v0.0.0-20180821085327-62ce714f951a h1:9wScpmSP5A3Bk8V3XHWUcJmYTh+ZnlHVyc+A4oZYS3Y=
 github.com/go-xorm/sqlfiddle v0.0.0-20180821085327-62ce714f951a/go.mod h1:56xuuqnHyryaerycW3BfssRdxQstACi0Epw/yC5E2xM=
 github.com/go-xorm/xorm v0.7.9 h1:LZze6n1UvRmM5gpL9/U9Gucwqo6aWlFVlfcHKH10qA0=

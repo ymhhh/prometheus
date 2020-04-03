@@ -55,6 +55,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/storage/mysql_metric"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/tsdb"
 	"github.com/prometheus/prometheus/util"
@@ -353,8 +354,15 @@ func main() {
 	var (
 		localStorage  = &tsdb.ReadyStorage{}
 		remoteStorage = remote.NewStorage(log.With(logger, "component", "remote"), prometheus.DefaultRegisterer, localStorage.StartTime, cfg.localStoragePath, time.Duration(cfg.RemoteFlushDeadline))
-		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage)
+		fanoutStorage storage.Storage
 	)
+
+	if mysqlStorage, errM := mysql_metric.NewStorage(
+		cfg.configFile, log.With(logger, "storage", "mysql_metric")); errM != nil {
+		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage)
+	} else {
+		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage, mysqlStorage)
+	}
 
 	var (
 		ctxWeb, cancelWeb = context.WithCancel(context.Background())

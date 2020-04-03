@@ -15,8 +15,8 @@ type BzAlert struct {
 	Status          string    `xorm:"not null default '' VARCHAR(50)"`
 	Operator        string    `xorm:"comment('操作符：=, >, <, !=, <=, >=, between(介于), not_between(不介于)') VARCHAR(10)"`
 	IsUsing         int32     `xorm:"not null default 0 TINYINT(1)"`
-	CreatedAt       time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
-	UpdatedAt       time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
+	CreatedAt       time.Time `xorm:"DATETIME created"`
+	UpdatedAt       time.Time `xorm:"DATETIME updated"`
 	Version         int       `xorm:"version"`
 	PxAlertGroupId  string    `xorm:"comment('phenix告警组ID备份') VARCHAR(50)"`
 	IsContinueAlarm int32     `xorm:"comment('是否持续告警，0否，1是') TINYINT(1)"`
