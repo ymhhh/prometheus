@@ -55,7 +55,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/storage/mysql_metric"
+	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/tsdb"
 	"github.com/prometheus/prometheus/util"
@@ -357,11 +357,11 @@ func main() {
 		fanoutStorage storage.Storage
 	)
 
-	if mysqlStorage, errM := mysql_metric.NewStorage(
-		cfg.configFile, log.With(logger, "storage", "mysql_metric")); errM != nil {
+	metricStorage, errM := metric.NewStorage(cfg.configFile, log.With(logger, "storage", "metric"))
+	if errM != nil {
 		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage)
 	} else {
-		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage, mysqlStorage)
+		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage, metricStorage)
 	}
 
 	var (

@@ -11,26 +11,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//mysql_metric 将metric以及对应的label存入数据库
-package mysql_metric
+//metric 将metric以及对应的label存入文件
+
+package metric
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
-	"github.com/prometheus/prometheus/models"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-trellis/common/logger"
 	"github.com/go-trellis/config"
-	"github.com/go-trellis/txorm"
-	"github.com/go-xorm/xorm"
 	"github.com/pkg/errors"
 )
 
 type ReadyStorage struct {
 	cfg config.Config
+	w   logger.Writer
 
 	l log.Logger
 
@@ -39,8 +40,9 @@ type ReadyStorage struct {
 }
 
 type Appender struct {
-	engine *xorm.Engine
-	l      log.Logger
+	l log.Logger
+
+	fLog logger.Logger
 }
 
 type Querier struct{}
@@ -52,7 +54,22 @@ func NewStorage(configFile string, l log.Logger) (storage.Storage, error) {
 		return nil, err
 	}
 
-	engines, err := txorm.NewEnginesFromConfig(cfg, "mysql_metric_storage.mysql")
+	fileName := cfg.GetString("metric_storage.filename")
+	if len(fileName) == 0 {
+		return nil, fmt.Errorf("file name not set")
+	}
+
+	fLog := logger.NewLogger()
+
+	w, err := logger.FileWriter(fLog,
+		logger.FileWiterFileName(fileName),
+		logger.FileWiterBuffer(cfg.GetInt("metric_storage.chan_buffer", 100000)),
+		logger.FileWiterSeparator(cfg.GetString("metric_storage.separator", "|")),
+		logger.FileWiterLevel(logger.Level(cfg.GetInt("metric_storage.level", 2))),
+		logger.FileWiterMoveFileType(logger.MoveFileType(cfg.GetInt("metric_storage.move_file_type", 2))),
+		logger.FileWiterMaxLength(int64(cfg.GetInt("metric_storage.max_length", 10000000))),
+		logger.FileWiterRoutings(cfg.GetInt("metric_storage.routings")),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +80,13 @@ func NewStorage(configFile string, l log.Logger) (storage.Storage, error) {
 		querier: &Querier{},
 	}
 
-	appender := &Appender{l: l}
-	appender.engine = engines[txorm.DefaultDatabase]
+	appender := &Appender{l: l, fLog: fLog}
+	s.w = w
+
+	_, err = appender.fLog.Subscriber(w)
+	if err != nil {
+		return nil, err
+	}
 
 	s.appender = appender
 	return s, nil
@@ -77,6 +99,7 @@ func (p *ReadyStorage) Appender() (storage.Appender, error) {
 
 // Close closes the storage and all its underlying resources.
 func (p *ReadyStorage) Close() error {
+	p.w.Stop()
 	return nil
 }
 
@@ -107,8 +130,9 @@ func (p *Appender) Add(lsets labels.Labels, t int64, v float64) (uint64, error) 
 	if len(metric) == 0 {
 		return 0, errors.New("not found metric")
 	}
+	p.write(serviceID, metric, lns)
 
-	return p.insertMetric(serviceID, metric, lns), nil
+	return uint64(len(lns)), nil
 }
 
 func (p *Appender) AddFast(lsets labels.Labels, ref uint64, t int64, v float64) error {
@@ -128,34 +152,13 @@ func (p *Appender) AddFast(lsets labels.Labels, ref uint64, t int64, v float64) 
 	if len(metric) == 0 {
 		return errors.New("not found metric")
 	}
-	p.insertMetric(serviceID, metric, lns)
+	p.write(serviceID, metric, lns)
 
 	return nil
 }
 
-func (p *Appender) insertMetric(service, metric string, labels []string) (count uint64) {
-	for _, v := range labels {
-		ml := &models.BzMetricLabels{}
-		has, err := p.engine.Where("`service_id` = ? and `metric` = ? and `label` = ?", service, metric, v).Get(ml)
-		if err != nil {
-			level.Warn(p.l).Log("insert_metric", err.Error(), "service", service, "metric", metric, "label", v)
-			continue
-		} else if has {
-			level.Debug(p.l).Log("insert_metric", "already_exists", "service", service, "metric", metric, "label", v)
-			continue
-		}
-		_, err = p.engine.InsertOne(&models.BzMetricLabels{
-			ServiceId: service,
-			Metric:    metric,
-			Label:     v,
-		})
-		if err != nil {
-			level.Warn(p.l).Log("insert_metric", err.Error(), "service", service, "metric", metric, "label", v)
-			continue
-		}
-		count++
-	}
-	return
+func (p *Appender) write(service, metric string, labels []string) {
+	p.fLog.Info(service, metric, strings.Join(labels, ","))
 }
 
 // Commit submits the collected samples and purges the batch.
