@@ -28,7 +28,6 @@ type fileWriter struct {
 
 	stopChan chan bool
 	logChan  chan *Event
-	ticker   *time.Ticker
 
 	subscriber event.Subscriber
 }
@@ -54,6 +53,7 @@ type routingFileWriter struct {
 	fileName      string
 	writeFileTime time.Time
 	lastMoveFlag  int
+	ticker        *time.Ticker
 }
 
 // MoveFileType move file type
@@ -134,7 +134,6 @@ func FileWriter(log Logger, opts ...OptionFileWriter) (Writer, error) {
 	fw := &fileWriter{
 		logger:   log,
 		stopChan: make(chan bool),
-		ticker:   time.NewTicker(time.Second),
 	}
 
 	err := fw.init(opts...)
@@ -177,6 +176,7 @@ func (p *fileWriter) init(opts ...OptionFileWriter) error {
 		rfw := routingFileWriter{
 			opts:          p.opts,
 			writeFileTime: time.Now(),
+			ticker:        time.NewTicker(time.Second * 30),
 		}
 
 		if p.opts.goNum == 1 {
@@ -237,7 +237,7 @@ func (p *routingFileWriter) looperLog(fw *fileWriter) {
 				if log.Level >= p.opts.level {
 					_, _ = p.innerLog(log)
 				}
-			case t := <-fw.ticker.C:
+			case t := <-p.ticker.C:
 				flag := 0
 				switch p.opts.moveFileType {
 				case MoveFileTypePerMinite:

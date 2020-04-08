@@ -148,8 +148,8 @@ github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/me
 github.com/go-trellis/algorithm v1.0.1 h1:Y6Rc4jAc0U+XCItyBz1sVhMYJd/yvCxSMEQMTMqNTC4=
 github.com/go-trellis/algorithm v1.0.1/go.mod h1:mTHr1KB0rZ+W001GA0FwJNrdL11CcmUjUVoiVMQbTMw=
 github.com/go-trellis/common v1.3.1/go.mod h1:F8/nbQi4+N0F6H9fxPy1TJNGVFbCBF28RnK5otMIiac=
-github.com/go-trellis/common v1.4.0 h1:WBreSAIWxL/kmWPGD1n8udgMD6wRhljPaSlpHaH3p/k=
-github.com/go-trellis/common v1.4.0/go.mod h1:F8/nbQi4+N0F6H9fxPy1TJNGVFbCBF28RnK5otMIiac=
+github.com/go-trellis/common v1.4.1 h1:3iWZHWGodJprL6Dp/WflG553s9S/qEGOUFM6lLe1bqo=
+github.com/go-trellis/common v1.4.1/go.mod h1:F8/nbQi4+N0F6H9fxPy1TJNGVFbCBF28RnK5otMIiac=
 github.com/go-trellis/config v1.3.6 h1:wW5uM2dzkDU8sxRjUEJB0K89BjjizUb6Py8U8LsWWYk=
 github.com/go-trellis/config v1.3.6/go.mod h1:UNsWctQuDliyqAVj0XRSm1kwuQa5PiTECyzULfSgqfo=
 github.com/go-trellis/errors v1.0.0 h1:kiPcFvXUr7y5MgqwDPHqUALuUAxnH88XTsOHB8w7TnU=

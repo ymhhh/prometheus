@@ -129,7 +129,7 @@ github.com/go-stack/stack
 # github.com/go-trellis/algorithm v1.0.1
 github.com/go-trellis/algorithm/data-structures/stack
 github.com/go-trellis/algorithm/encryption/hash
-# github.com/go-trellis/common v1.4.0
+# github.com/go-trellis/common v1.4.1
 github.com/go-trellis/common/event
 github.com/go-trellis/common/formats
 github.com/go-trellis/common/logger
