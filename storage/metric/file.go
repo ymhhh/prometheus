@@ -63,6 +63,7 @@ func NewStorage(configFile string, l log.Logger) (storage.Storage, error) {
 
 	w, err := logger.FileWriter(fLog,
 		logger.FileWiterFileName(fileName),
+		logger.FileWiterMaxBackupFile(cfg.GetInt("metric_storage.max_backup_file")),
 		logger.FileWiterBuffer(cfg.GetInt("metric_storage.chan_buffer", 100000)),
 		logger.FileWiterSeparator(cfg.GetString("metric_storage.separator", "|")),
 		logger.FileWiterLevel(logger.Level(cfg.GetInt("metric_storage.level", 2))),
