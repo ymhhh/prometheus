@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/go-trellis/common/event"
-	"github.com/go-trellis/files"
+	"github.com/go-trellis/common/files"
 )
 
 type fileWriter struct {

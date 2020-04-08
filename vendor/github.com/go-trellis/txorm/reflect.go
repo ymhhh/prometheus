@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-trellis/errors"
+	"github.com/go-trellis/common/errors"
 )
 
 // MapErrorTypes 可以支持的返回的错误类型

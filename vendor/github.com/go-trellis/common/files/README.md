@@ -6,7 +6,7 @@ a tool in go to execute file
 ### Installation
 
 ```golang
-	go get -u github.com/go-trellis/files
+	go get -u github.com/go-trellis/common/files
 ```
 
 ### Usage

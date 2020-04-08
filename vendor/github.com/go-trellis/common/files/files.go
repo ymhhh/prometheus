@@ -1,5 +1,4 @@
 // GNU GPL v3 License
-
 // Copyright (c) 2016 github.com:go-trellis
 
 package files
@@ -160,7 +159,7 @@ func (p *fileGem) execute(name string, fStatus FileStatus, callback callbackExec
 	if err = p.updateExecFileStatus(name, fStatus); err != nil {
 		return
 	}
-	defer p.updateExecFileStatus(name, FileStatusClosed)
+	defer func() { _ = p.updateExecFileStatus(name, FileStatusClosed) }()
 
 	return callback()
 }

@@ -4,7 +4,7 @@
 package txorm
 
 import (
-	"github.com/go-trellis/errors"
+	"github.com/go-trellis/common/errors"
 )
 
 // NonTX do non transaction function by default database
