@@ -15,9 +15,9 @@ require (
 	github.com/go-kit/kit v0.9.0
 	github.com/go-logfmt/logfmt v0.4.0
 	github.com/go-openapi/strfmt v0.19.2
-	github.com/go-trellis/common v1.3.1
-	github.com/go-trellis/config v1.3.5
-	github.com/go-trellis/txorm v1.0.1
+	github.com/go-trellis/common v1.6.1
+	github.com/go-trellis/config v1.4.1
+	github.com/go-trellis/txorm v1.1.0
 	github.com/go-xorm/xorm v0.7.9
 	github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
 	github.com/golang/snappy v0.0.1
@@ -47,7 +47,7 @@ require (
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
-	golang.org/x/sys v0.0.0-20191010194322-b09406accb47
+	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	golang.org/x/tools v0.0.0-20190918214516-5a1a30219888
 	google.golang.org/api v0.8.0

@@ -126,16 +126,17 @@ github.com/go-openapi/validate
 github.com/go-sql-driver/mysql
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/go-trellis/algorithm v1.0.1
-github.com/go-trellis/algorithm/data-structures/stack
-github.com/go-trellis/algorithm/encryption/hash
-# github.com/go-trellis/common v1.3.1
+# github.com/go-trellis/common v1.6.1
+github.com/go-trellis/common/data-structures/stack
+github.com/go-trellis/common/encryption/hash
+github.com/go-trellis/common/errors
+github.com/go-trellis/common/event
+github.com/go-trellis/common/files
 github.com/go-trellis/common/formats
-# github.com/go-trellis/config v1.3.5
+github.com/go-trellis/common/logger
+# github.com/go-trellis/config v1.4.1
 github.com/go-trellis/config
-# github.com/go-trellis/errors v1.0.0
-github.com/go-trellis/errors
-# github.com/go-trellis/txorm v1.0.1
+# github.com/go-trellis/txorm v1.1.0
 github.com/go-trellis/txorm
 # github.com/go-xorm/xorm v0.7.9
 github.com/go-xorm/xorm
@@ -196,6 +197,8 @@ github.com/google/go-cmp/cmp/internal/value
 github.com/google/gofuzz
 # github.com/google/pprof v0.0.0-20190723021845-34ac40c74b70
 github.com/google/pprof/profile
+# github.com/google/uuid v1.1.1
+github.com/google/uuid
 # github.com/googleapis/gax-go/v2 v2.0.5
 github.com/googleapis/gax-go/v2
 # github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d
@@ -399,7 +402,7 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20190423024810-112230192c58
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20191010194322-b09406accb47
+# golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
@@ -725,5 +728,5 @@ k8s.io/utils/trace
 sigs.k8s.io/yaml
 # xorm.io/builder v0.3.6
 xorm.io/builder
-# xorm.io/core v0.7.2
+# xorm.io/core v0.7.3
 xorm.io/core

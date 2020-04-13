@@ -3,7 +3,7 @@
 
 package txorm
 
-import "github.com/go-trellis/errors"
+import "github.com/go-trellis/common/errors"
 
 const _namespace = "go-trellis::txorm"
 

@@ -1,5 +1,4 @@
 // GNU GPL v3 License
-
 // Copyright (c) 2017 github.com:go-trellis
 
 package errors
@@ -10,7 +9,7 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/go-trellis/algorithm/encryption/hash"
+	"github.com/go-trellis/common/encryption/hash"
 )
 
 const (

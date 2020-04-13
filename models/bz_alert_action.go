@@ -13,7 +13,7 @@ type BzAlertAction struct {
 	IsUsing          int32     `xorm:"not null default 0 comment('是否启用') TINYINT(1)"`
 	Title            string    `xorm:"VARCHAR(50)"`
 	Content          string    `xorm:"VARCHAR(1500)"`
-	CreatedAt        time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
-	UpdatedAt        time.Time `xorm:"not null default 'CURRENT_TIMESTAMP' DATETIME"`
+	CreatedAt        time.Time `xorm:"DATETIME created"`
+	UpdatedAt        time.Time `xorm:"DATETIME updated"`
 	TopAlertActionId string    `xorm:"VARCHAR(50)"`
 }

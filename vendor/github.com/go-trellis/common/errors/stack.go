@@ -1,5 +1,4 @@
 // GNU GPL v3 License
-
 // Copyright (c) 2017 github.com:go-trellis
 
 package errors
@@ -9,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/go-trellis/algorithm/data-structures/stack"
+	"github.com/go-trellis/common/data-structures/stack"
 )
 
 func callersDeepth(deepth int) stack.Stack {

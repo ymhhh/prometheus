@@ -4,7 +4,6 @@
 package config
 
 import (
-	"fmt"
 	"math/big"
 	"reflect"
 	"strings"
@@ -66,6 +65,9 @@ func (p *AdapterConfig) init(opts ...Option) (err error) {
 
 		err = p.reader.Read(p.ConfigFile, &p.configs)
 	}
+	if err != nil {
+		return ErrValueNil
+	}
 
 	if len(p.ConfigString) > 0 {
 		switch p.readerType {
@@ -80,7 +82,6 @@ func (p *AdapterConfig) init(opts ...Option) (err error) {
 		}
 	}
 	if err != nil {
-		fmt.Println(err)
 		return ErrValueNil
 	}
 
