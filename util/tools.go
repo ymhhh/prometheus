@@ -14,6 +14,9 @@
 package util
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -164,4 +167,44 @@ func IsValidMetricName(n string) bool {
 		}
 	}
 	return true
+}
+
+// Gzip zip压缩
+// level:
+// flate.NoCompression      = 0
+// flate.BestSpeed          = 1
+// flate.BestCompression    = 9
+// flate.DefaultCompression = -1
+func Gzip(src []byte, level int) ([]byte, error) {
+	zw := bytes.NewBuffer(nil)
+	gzipWriter, err := gzip.NewWriterLevel(zw, level)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = gzipWriter.Write(src)
+	if err != nil {
+		gzipWriter.Close()
+		return nil, err
+	}
+	gzipWriter.Close()
+
+	return zw.Bytes(), nil
+}
+
+// UnGzip zip解压
+func UnGzip(src []byte) ([]byte, error) {
+	r := bytes.NewReader(src)
+	body, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+
+	data, err := ioutil.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

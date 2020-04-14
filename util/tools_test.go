@@ -14,6 +14,7 @@
 package util
 
 import (
+	"compress/flate"
 	"testing"
 )
 
@@ -241,6 +242,27 @@ func TestCheckMetircName(t *testing.T) {
 	name = ":b_:::123_sdf"
 	if !CheckMetircName(name) {
 		t.Errorf("CheckMetircName[%s] err, Got: false expected: true", name)
+		return
+	}
+}
+
+// TestGzip 测试Gzip函数
+func TestGzip(t *testing.T) {
+	src := "hello world!"
+	b1, err := Gzip([]byte(src), flate.DefaultCompression)
+	if err != nil {
+		t.Errorf("Gzip err[%s]", err.Error())
+		return
+	}
+
+	b2, err := UnGzip(b1)
+	if err != nil {
+		t.Errorf("UnGzip err[%s]", err.Error())
+		return
+	}
+
+	if string(b2) != src {
+		t.Errorf("Gzip err, Got: [%s]] expected: [%s]]", string(b2), src)
 		return
 	}
 }
