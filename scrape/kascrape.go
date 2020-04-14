@@ -44,6 +44,8 @@ var (
 const (
 	MSG_T_JSON = "json"
 	MSG_T_PROM = "prom"
+
+	GZIP_V01 = "G01_"
 )
 
 type MetricData map[string]interface{}
@@ -205,6 +207,14 @@ LOOP:
 			if msg == "" {
 				continue
 			}
+			if len(msg) > 3 && msg[0:4] == GZIP_V01 {
+				b, err := util.UnGzip([]byte(msg[4:]))
+				if err != nil {
+					level.Error(sp.logger).Log("msg", "ungzip err", "err", err.Error())
+				}
+				msg = string(b)
+			}
+
 			if sp.config.MsgType == MSG_T_JSON {
 				msg, err = sp.json2Prome(&msg)
 				if err != nil {

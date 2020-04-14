@@ -152,7 +152,7 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 
 	// API returns status code 204 for successful writes.
 	// http://opentsdb.net/docs/build/html/api_http/put.html
-	if resp.StatusCode == http.StatusNoContent {
+	if resp.StatusCode < 400 {
 		return len(samples), nil
 	}
 
