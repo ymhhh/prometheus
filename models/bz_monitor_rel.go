@@ -5,7 +5,7 @@ import (
 )
 
 type BzMonitorRel struct {
-	Id        int32     `xorm:"not null pk INT(11)"`
+	Id        int64     `xorm:"pk autoincr BIGINT(20)"`
 	Type      int32     `xorm:"INT(11)"`
 	RefId     string    `xorm:"VARCHAR(50)"`
 	MonitorId string    `xorm:"not null default '' index VARCHAR(50)"`

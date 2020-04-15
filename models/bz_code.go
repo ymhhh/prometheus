@@ -10,11 +10,11 @@ type BzCode struct {
 	NameCn     string    `xorm:"VARCHAR(50)"`
 	CreatorErp string    `xorm:"VARCHAR(45)"`
 	UpdaterErp string    `xorm:"VARCHAR(45)"`
-	CreatedAt  time.Time `xorm:"DATETIME"`
-	UpdatedAt  time.Time `xorm:"DATETIME"`
-	Deleted    int       `xorm:"INT(11)"`
-	Type       int       `xorm:"INT(11)"`
+	CreatedAt  time.Time `xorm:"DATETIME created"`
+	UpdatedAt  time.Time `xorm:"DATETIME updated"`
+	Deleted    int32     `xorm:"INT(11)"`
+	Type       int32     `xorm:"INT(11)"`
 	Git        string    `xorm:"VARCHAR(150)"`
 	Desc       string    `xorm:"VARCHAR(150)"`
-	ServiceId  int       `xorm:"INT(11)"`
+	ServiceId  int32     `xorm:"INT(11)"`
 }
