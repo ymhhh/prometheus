@@ -90,8 +90,28 @@ func (m *Manager) LoadMysqlGroups(
 	groups := make(map[string]*Group)
 	for _, monitor := range monitors {
 		var monitorLabels []*models.BzMonitorLabels
-		if err := m.engine.Where("`monitor_id` = ?", monitor.Id).Find(&monitorLabels); err != nil {
+
+		count, err := m.engine.Where("`monitor_id` = ?", monitor.Id).FindAndCount(&monitorLabels)
+		if err != nil {
 			return nil, err
+		}
+
+		if count == 0 {
+			monitorRel := &models.BzMonitorRel{}
+
+			mLabel := &models.BzMonitorLabels{
+				Id: "default",
+			}
+			has, err := m.engine.Table("bz_monitor_rel").
+				Join("INNER", "bz_monitor", "bz_monitor_rel.monitor_id = bz_monitor.id").
+				Where("bz_monitor.id = ?", monitor.Id).
+				Get(monitorRel)
+			if err != nil {
+				return nil, err
+			} else if has {
+				mLabel.LabelStr = fmt.Sprintf("{serviceId=%q}", monitorRel.RefId)
+			}
+			monitorLabels = append(monitorLabels, mLabel)
 		}
 
 		monitorGroups, err := m.loadMonitorGroups(monitor, monitorLabels, interval, externalLabels, shouldRestore)
@@ -126,36 +146,13 @@ func (m *Manager) loadMonitorGroups(
 			return nil, err
 		}
 		var alertRules []Rule
-		switch len(mLabels) {
-		case 0:
 
-			monitorRel := &models.BzMonitorRel{}
-
-			mLabels := &models.BzMonitorLabels{
-				Id: "default",
-			}
-			has, err := m.engine.Table("bz_monitor_rel").
-				Join("INNER", "bz_monitor", "bz_monitor_rel.monitor_id = bz_monitor.id").
-				Get(monitorRel)
-			if err != nil {
-				return nil, err
-			} else if has {
-				mLabels.LabelStr = fmt.Sprintf("{serviceId=%q}", monitorRel.RefId)
-			}
-
-			rule, err := m.genAlertRules(v, thrds, mLabels, externalLabels)
+		for _, mLabel := range mLabels {
+			rule, err := m.genAlertRules(v, thrds, mLabel, externalLabels)
 			if err != nil {
 				return nil, err
 			}
 			alertRules = append(alertRules, rule)
-		default:
-			for _, mLabel := range mLabels {
-				rule, err := m.genAlertRules(v, thrds, mLabel, externalLabels)
-				if err != nil {
-					return nil, err
-				}
-				alertRules = append(alertRules, rule)
-			}
 		}
 
 		groups[gkey] = NewGroup(v.Name, v.Id, itv, alertRules, shouldRestore, m.opts)
