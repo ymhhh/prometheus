@@ -13,5 +13,5 @@ type BzApplication struct {
 	SystemId   string `xorm:"VARCHAR(45)"`
 	Type       string `xorm:"VARCHAR(45)"`
 	FullPath   string `xorm:"VARCHAR(45)"`
-	Version    string `xorm:"VARCHAR(45)"`
+	Version    int    `xorm:"version"`
 }

@@ -17,7 +17,12 @@ package rules
 
 import (
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/prometheus/prometheus/models"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -25,9 +30,6 @@ import (
 	"github.com/go-trellis/config"
 	"github.com/go-trellis/txorm"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/models"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 )
 
 func (m *Manager) initMysqlEngine(dbMap map[string]interface{}) error {
@@ -50,7 +52,6 @@ func (m *Manager) initMysqlEngine(dbMap map[string]interface{}) error {
 func (m *Manager) UpdateMysql(
 	interval time.Duration, dbMap map[string]interface{}, externalLabels labels.Labels,
 ) error {
-
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -62,11 +63,10 @@ func (m *Manager) UpdateMysql(
 		return err
 	}
 
-	groups, errs := m.LoadMysqlGroups(interval, externalLabels)
-	if errs != nil {
-		for _, e := range errs {
-			level.Error(m.logger).Log("msg", "loading groups failed", "err", e)
-		}
+	groups, err := m.LoadMysqlGroups(interval, externalLabels)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "loading groups failed", "err", err)
+
 		return errors.New("error loading rules, previous rule set restored")
 	}
 
@@ -78,25 +78,25 @@ func (m *Manager) UpdateMysql(
 // LoadMysqlGroups 加载Mysql的报警组
 func (m *Manager) LoadMysqlGroups(
 	interval time.Duration, externalLabels labels.Labels,
-) (map[string]*Group, []error) {
+) (map[string]*Group, error) {
 
 	shouldRestore := !m.restored
 
 	var monitors []*models.BzMonitor
 	if err := m.engine.Where("`is_using` = ?", 1).Find(&monitors); err != nil {
-		return nil, []error{err}
+		return nil, err
 	}
 
 	groups := make(map[string]*Group)
 	for _, monitor := range monitors {
 		var monitorLabels []*models.BzMonitorLabels
 		if err := m.engine.Where("`monitor_id` = ?", monitor.Id).Find(&monitorLabels); err != nil {
-			return nil, []error{err}
+			return nil, err
 		}
 
-		monitorGroups, errs := m.loadMonitorGroups(monitor, monitorLabels, interval, externalLabels, shouldRestore)
-		if len(errs) != 0 {
-			return nil, errs
+		monitorGroups, err := m.loadMonitorGroups(monitor, monitorLabels, interval, externalLabels, shouldRestore)
+		if err != nil {
+			return nil, err
 		}
 		for key, value := range monitorGroups {
 			groups[key] = value
@@ -109,41 +109,52 @@ func (m *Manager) LoadMysqlGroups(
 func (m *Manager) loadMonitorGroups(
 	monitor *models.BzMonitor, mLabels []*models.BzMonitorLabels,
 	interval time.Duration, externalLabels labels.Labels, shouldRestore bool,
-) (map[string]*Group, []error) {
+) (map[string]*Group, error) {
 
 	groups := make(map[string]*Group)
 	var alerts []*models.BzAlert
 	if err := m.engine.Where("`is_using` = ?", 1).And("`monitor_id` = ?", monitor.Id).Find(&alerts); err != nil {
-		return nil, []error{err}
+		return nil, err
 	}
 
 	for _, v := range alerts {
 		itv := interval
 		gkey := fmt.Sprintf("%s-%s", v.Name, v.Id)
 
-		var alertThresholds []*models.BzAlertThreshold
-		if err := m.engine.Where("`alert_id` = ?", v.Id).Find(&alertThresholds); err != nil {
-			return nil, []error{errors.Wrap(err, gkey)}
+		var thrds []*models.BzAlertThreshold
+		if err := m.engine.Where("`alert_id` = ?", v.Id).Find(&thrds); err != nil {
+			return nil, err
 		}
-
 		var alertRules []Rule
-		var exprStr string
 		switch len(mLabels) {
 		case 0:
-			exprStr = v.Expression
-			rules, errs := m.genAlertRules(v, alertThresholds, "", exprStr, externalLabels)
-			if len(errs) != 0 {
-				return nil, errs
+
+			monitorRel := &models.BzMonitorRel{}
+
+			mLabels := &models.BzMonitorLabels{
+				Id: "default",
 			}
-			alertRules = append(alertRules, rules...)
+			has, err := m.engine.Table("bz_monitor_rel").
+				Join("INNER", "bz_monitor", "bz_monitor_rel.monitor_id = bz_monitor.id").
+				Get(monitorRel)
+			if err != nil {
+				return nil, err
+			} else if has {
+				mLabels.LabelStr = fmt.Sprintf("{serviceId=%q}", monitorRel.RefId)
+			}
+
+			rule, err := m.genAlertRules(v, thrds, mLabels, externalLabels)
+			if err != nil {
+				return nil, err
+			}
+			alertRules = append(alertRules, rule)
 		default:
 			for _, mLabel := range mLabels {
-				exprStr = fmt.Sprintf("%s%s", v.Expression, mLabel.Labels)
-				rules, errs := m.genAlertRules(v, alertThresholds, mLabel.Id, exprStr, externalLabels)
-				if len(errs) != 0 {
-					return nil, errs
+				rule, err := m.genAlertRules(v, thrds, mLabel, externalLabels)
+				if err != nil {
+					return nil, err
 				}
-				alertRules = append(alertRules, rules...)
+				alertRules = append(alertRules, rule)
 			}
 		}
 
@@ -154,44 +165,54 @@ func (m *Manager) loadMonitorGroups(
 }
 
 func (m *Manager) genAlertRules(
-	alert *models.BzAlert, thrds []*models.BzAlertThreshold, mLabelID, exprStr string, externalLabels labels.Labels,
-) ([]Rule, []error) {
-	var rules []Rule
+	alert *models.BzAlert,
+	thrds []*models.BzAlertThreshold,
+	mLabel *models.BzMonitorLabels,
+	externalLabels labels.Labels,
+) (Rule, error) {
+
+	var exprStrs []string
+	var mLabelID string
 	for _, thrd := range thrds {
+		exprStr := thrd.Metric
+
+		if mLabel.LabelStr != "" {
+			exprStr = fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
+		}
+
 		switch alert.Operator {
 		case "between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
 		case "not_between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
 		default:
-			exprStr = fmt.Sprintf("%s %s %f", exprStr, alert.Operator, thrd.Threshold)
-		}
-		level.Debug(m.logger).Log("rule expression", exprStr)
-		expr, err := promql.ParseExpr(exprStr)
-		if err != nil {
-			return nil, []error{errors.Wrap(err, alert.Id+":"+exprStr)}
+			exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
 		}
 
-		rLabels := map[string]string{
-			"alert_id":         alert.Id,
-			"Threshold_id":     thrd.Id,
-			"monitor_label_id": mLabelID,
-			"threshold":        fmt.Sprintf("%f", thrd.Threshold),
-			"severity":         thrd.Severity}
-
-		annotations := map[string]string{"summary": alert.Title, "description": alert.Content}
-		rule := NewAlertingRule(
-			alert.Id+":"+thrd.Id+":"+mLabelID,
-			expr,
-			formats.ParseStringTime(thrd.For),
-			labels.FromMap(rLabels),
-			labels.FromMap(annotations),
-			externalLabels,
-			m.restored,
-			log.With(m.logger, "alert_mysql", alert.Id, "expression", exprStr),
-		)
-		rules = append(rules, rule)
+		exprStrs = append(exprStrs, exprStr)
 	}
 
-	return rules, nil
+	exprStr := strings.Join(exprStrs, " and ")
+
+	expr, err := promql.ParseExpr(exprStr)
+	if err != nil {
+		level.Error(m.logger).Log("expression", exprStr, "err", err)
+		return nil, err
+	}
+	rule := NewAlertingRule(
+		alert.Id+":"+mLabelID,
+		expr,
+		formats.ParseStringTime(alert.For),
+		labels.FromMap(map[string]string{
+			"expression":       exprStr,
+			"alert_id":         alert.Id,
+			"monitor_label_id": mLabelID,
+			"severity":         alert.Severity}),
+		labels.FromMap(map[string]string{"summary": alert.Title, "description": alert.Content}),
+		externalLabels,
+		m.restored,
+		log.With(m.logger, "alert_mysql", alert.Id, "expression", exprStr),
+	)
+
+	return rule, nil
 }
