@@ -24,6 +24,4 @@ type BzAlert struct {
 	GroupBy         string    `xorm:"TEXT"`
 	For             string    `xorm:"not null default '10m' VARCHAR(50)"`
 	Version         int       `xorm:"version"`
-	Operator        string    `xorm:"comment('操作符：=, >, <, !=, <=, >=, between(介于), not_between(不介于)') VARCHAR(20)"`
-	Expression      string    `xorm:"TEXT"`
 }

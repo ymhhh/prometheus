@@ -171,13 +171,10 @@ func (m *Manager) genAlertRules(
 	var exprStrs []string
 	var mLabelID string
 	for _, thrd := range thrds {
-		exprStr := thrd.Metric
 
-		if mLabel.LabelStr != "" {
-			exprStr = fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
-		}
+		exprStr := fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
 
-		switch alert.Operator {
+		switch thrd.Operator {
 		case "between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
 		case "not_between": // 在阈值范围内
