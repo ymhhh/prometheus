@@ -13,4 +13,5 @@ type BzAlertGroup struct {
 	CreatedAt   time.Time `xorm:"DATETIME created"`
 	UpdatedAt   time.Time `xorm:"DATETIME updated"`
 	Owner       string    `xorm:"TEXT"`
+	Members     string    `xorm:"comment('组成员') TEXT"`
 }

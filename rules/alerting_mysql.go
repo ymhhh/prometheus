@@ -169,15 +169,11 @@ func (m *Manager) genAlertRules(
 ) (Rule, error) {
 
 	var exprStrs []string
-	var mLabelID string
 	for _, thrd := range thrds {
-		exprStr := thrd.Metric
 
-		if mLabel.LabelStr != "" {
-			exprStr = fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
-		}
+		exprStr := fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
 
-		switch alert.Operator {
+		switch thrd.Operator {
 		case "between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
 		case "not_between": // 在阈值范围内
@@ -197,13 +193,13 @@ func (m *Manager) genAlertRules(
 		return nil, err
 	}
 	rule := NewAlertingRule(
-		alert.Id+":"+mLabelID,
+		alert.Id+":"+mLabel.Id,
 		expr,
 		formats.ParseStringTime(alert.For),
 		labels.FromMap(map[string]string{
 			"expression":       exprStr,
 			"alert_id":         alert.Id,
-			"monitor_label_id": mLabelID,
+			"monitor_label_id": mLabel.Id,
 			"severity":         alert.Severity}),
 		labels.FromMap(map[string]string{"summary": alert.Title, "description": alert.Content}),
 		externalLabels,
