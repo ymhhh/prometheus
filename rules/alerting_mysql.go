@@ -109,7 +109,7 @@ func (m *Manager) LoadMysqlGroups(
 			if err != nil {
 				return nil, err
 			} else if has {
-				mLabel.LabelStr = fmt.Sprintf("{serviceId=%q}", monitorRel.RefId)
+				mLabel.LabelStr = fmt.Sprintf("serviceId=%q", monitorRel.RefId)
 			}
 			monitorLabels = append(monitorLabels, mLabel)
 		}
