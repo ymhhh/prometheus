@@ -167,11 +167,29 @@ func (m *Manager) genAlertRules(
 	mLabel *models.BzMonitorLabels,
 	externalLabels labels.Labels,
 ) (Rule, error) {
+	var alertLabels []models.BzAlertMetricLabel
+	err := m.engine.Where("alert_id = ?", alert.Id).Find(&alertLabels)
+	if err != nil {
+		return nil, err
+	}
+	var labelStrs []string
+	for _, l := range alertLabels {
+		labelStrs = append(labelStrs, fmt.Sprintf(" %s%s%q ", l.Label, l.Operator, l.Value))
+	}
+
+	if mLabel.LabelStr != "" {
+		labelStrs = append(labelStrs, mLabel.LabelStr)
+	}
+
+	labelStr := strings.Join(labelStrs, ",")
 
 	var exprStrs []string
 	for _, thrd := range thrds {
 
-		exprStr := fmt.Sprintf("%s%s", thrd.Metric, mLabel.LabelStr)
+		exprStr := thrd.Metric
+		if labelStr != "" {
+			exprStr = fmt.Sprintf("%s{%s}", exprStr, labelStr)
+		}
 
 		switch thrd.Operator {
 		case "between": // 在阈值范围内
