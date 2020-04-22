@@ -106,7 +106,9 @@ func (m *Manager) LoadMysqlGroups(
 		if err != nil {
 			return nil, err
 		}
-		groups[monitor.Id] = NewGroup(monitor.Id, serviceID, interval, rules, shouldRestore, m.opts)
+		if len(rules) > 0 {
+			groups[monitor.Id] = NewGroup(monitor.Id, serviceID, interval, rules, shouldRestore, m.opts)
+		}
 	}
 
 	return groups, nil
@@ -125,7 +127,7 @@ func (m *Manager) loadMonitorAlertRules(
 
 	var alertsRules []Rule
 	for _, v := range alerts {
-		rule, err := m.genAlertRules(serviceID, v, externalLabels)
+		rule, err := m.genAlertRules(serviceID, monitor, v, externalLabels)
 		if err != nil {
 			return nil, err
 		}
@@ -137,6 +139,7 @@ func (m *Manager) loadMonitorAlertRules(
 
 func (m *Manager) genAlertRules(
 	serviceID string,
+	monitor *models.BzMonitor,
 	alert *models.BzAlert,
 	externalLabels labels.Labels,
 ) (Rule, error) {
@@ -194,9 +197,11 @@ func (m *Manager) genAlertRules(
 		expr,
 		formats.ParseStringTime(alert.For),
 		labels.FromMap(map[string]string{
-			"expression": exprStr,
-			"alert_id":   alert.Id,
-			"severity":   alert.Severity,
+			"expression":   exprStr,
+			"alert_id":     alert.Id,
+			"alert_name":   alert.Name,
+			"severity":     alert.Severity,
+			"monitor_name": monitor.Name,
 		}),
 		labels.FromMap(map[string]string{
 			"summary":     alert.Title,
