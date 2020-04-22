@@ -238,7 +238,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		}
 	}
 
-	var data []models.TKmServers
+	var data []*models.TKmServers
 	if err := session.Find(&data); err != nil {
 		return nil, err
 	}
@@ -246,7 +246,6 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	serverExists := map[string]*targetgroup.Group{}
 
 	for _, server := range data {
-		server.ParseTag()
 
 		key := fmt.Sprintf("%s:%s:%s:%s",
 			server.MachineRoom, server.Attribution, server.ClusterName, server.DeploymentServices)
@@ -257,37 +256,39 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			}
 		}
 
-		port, ok := p.cfg.ExcludeServerPorts[server.IP]
+		port, ok := p.cfg.ExcludeServerPorts[server.Ip]
 		if !ok {
 			port = p.cfg.ServerPort
 		}
 
 		group.Targets = append(group.Targets,
-			model.LabelSet{model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:%d", server.IP, port))})
+			model.LabelSet{model.AddressLabel: model.LabelValue(fmt.Sprintf("%s:%d", server.Ip, port))})
 
 		group.Labels = model.LabelSet{}
 
 		if len(server.Model) > 0 {
-			group.Labels["model"] = server.Model
+			group.Labels["model"] = model.LabelValue(server.Model)
 		}
 		if len(server.Vendor) > 0 {
-			group.Labels["vendor"] = server.Vendor
+			group.Labels["vendor"] = model.LabelValue(server.Vendor)
 		}
 		if len(server.MachineRoom) > 0 {
-			group.Labels["machine_room"] = server.MachineRoom
+			group.Labels["machine_room"] = model.LabelValue(server.MachineRoom)
 		}
 		if len(server.Cabinet) > 0 {
-			group.Labels["cabinet"] = server.Cabinet
+			group.Labels["cabinet"] = model.LabelValue(server.Cabinet)
 		}
 
-		for tag, value := range server.TagMaps {
+		tagMaps := parseTKmServers(server)
+
+		for tag, value := range tagMaps {
 			aliasTag := p.tagAlias(string(tag))
-			level.Debug(p.logger).Log("msg", "tag_alias", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
+			level.Debug(p.logger).Log("msg", "tag_alias", "ip", server.Ip, "tag", tag, "aliasTag", aliasTag)
 
 			if len(aliasTag) != 0 {
 				if !aliasTag.IsValid() {
 					level.Warn(p.logger).Log(
-						"msg", "tag_alias_is_valid", "ip", server.IP, "tag", tag, "aliasTag", aliasTag)
+						"msg", "tag_alias_is_valid", "ip", server.Ip, "tag", tag, "aliasTag", aliasTag)
 					continue
 				}
 				group.Labels[aliasTag] = value
@@ -295,7 +296,7 @@ func (p *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			}
 
 			if !tag.IsValid() {
-				level.Warn(p.logger).Log("msg", "tag_is_valid", "ip", server.IP, "tag", tag)
+				level.Warn(p.logger).Log("msg", "tag_is_valid", "ip", server.Ip, "tag", tag)
 				continue
 			}
 			group.Labels[tag] = value
@@ -318,4 +319,27 @@ func (p *Discovery) tagAlias(key string) model.LabelName {
 	}
 
 	return model.LabelName(p.cfg.TagAlias[key])
+}
+
+func parseTKmServers(server *models.TKmServers) (tagMaps model.LabelSet) {
+	tagMaps = make(model.LabelSet)
+	if len(server.Tag) == 0 {
+		return
+	}
+	labels := make(map[model.LabelName][]string)
+
+	for _, tag := range strings.Split(server.Tag, ",") {
+		kvs := strings.Split(tag, ":")
+		if len(kvs) < 2 {
+			continue
+		}
+		labelKey := model.LabelName(kvs[0])
+		labels[labelKey] = append(labels[labelKey], kvs[1])
+	}
+
+	for key, lSlice := range labels {
+		tagMaps[key] = model.LabelValue(strings.Join(lSlice, ","))
+	}
+
+	return
 }
