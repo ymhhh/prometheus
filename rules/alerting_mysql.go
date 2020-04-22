@@ -89,102 +89,81 @@ func (m *Manager) LoadMysqlGroups(
 
 	groups := make(map[string]*Group)
 	for _, monitor := range monitors {
-		var monitorLabels []*models.BzMonitorLabels
 
-		count, err := m.engine.Where("`monitor_id` = ?", monitor.Id).FindAndCount(&monitorLabels)
+		monitorRel := &models.BzMonitorRel{}
+
+		serviceID := ""
+		has, err := m.engine.Table("bz_monitor_rel").
+			Join("INNER", "bz_monitor", "bz_monitor_rel.monitor_id = bz_monitor.id").
+			Where("bz_monitor.id = ?", monitor.Id).
+			Get(monitorRel)
+		if err != nil {
+			return nil, err
+		} else if has {
+			serviceID = monitorRel.RefId
+		}
+		rules, err := m.loadMonitorAlertRules(serviceID, monitor, externalLabels)
 		if err != nil {
 			return nil, err
 		}
-
-		if count == 0 {
-			monitorRel := &models.BzMonitorRel{}
-
-			mLabel := &models.BzMonitorLabels{
-				Id: "default",
-			}
-			has, err := m.engine.Table("bz_monitor_rel").
-				Join("INNER", "bz_monitor", "bz_monitor_rel.monitor_id = bz_monitor.id").
-				Where("bz_monitor.id = ?", monitor.Id).
-				Get(monitorRel)
-			if err != nil {
-				return nil, err
-			} else if has {
-				mLabel.LabelStr = fmt.Sprintf("serviceId=%q", monitorRel.RefId)
-			}
-			monitorLabels = append(monitorLabels, mLabel)
-		}
-
-		monitorGroups, err := m.loadMonitorGroups(monitor, monitorLabels, interval, externalLabels, shouldRestore)
-		if err != nil {
-			return nil, err
-		}
-		for key, value := range monitorGroups {
-			groups[key] = value
-		}
+		groups[monitor.Id] = NewGroup(monitor.Id, serviceID, interval, rules, shouldRestore, m.opts)
 	}
 
 	return groups, nil
 }
 
-func (m *Manager) loadMonitorGroups(
-	monitor *models.BzMonitor, mLabels []*models.BzMonitorLabels,
-	interval time.Duration, externalLabels labels.Labels, shouldRestore bool,
-) (map[string]*Group, error) {
+func (m *Manager) loadMonitorAlertRules(
+	serviceID string,
+	monitor *models.BzMonitor,
+	externalLabels labels.Labels,
+) ([]Rule, error) {
 
-	groups := make(map[string]*Group)
 	var alerts []*models.BzAlert
-	if err := m.engine.Where("`is_using` = ?", 1).And("`monitor_id` = ?", monitor.Id).Find(&alerts); err != nil {
+	if err := m.engine.Where("`is_using` = ? and `monitor_id` = ?", 1, monitor.Id).Find(&alerts); err != nil {
 		return nil, err
 	}
 
+	var alertsRules []Rule
 	for _, v := range alerts {
-		itv := interval
-		gkey := fmt.Sprintf("%s-%s", v.Name, v.Id)
-
-		var thrds []*models.BzAlertThreshold
-		if err := m.engine.Where("`alert_id` = ?", v.Id).Find(&thrds); err != nil {
+		rule, err := m.genAlertRules(serviceID, v, externalLabels)
+		if err != nil {
 			return nil, err
 		}
-		var alertRules []Rule
-
-		for _, mLabel := range mLabels {
-			rule, err := m.genAlertRules(v, thrds, mLabel, externalLabels)
-			if err != nil {
-				return nil, err
-			}
-			alertRules = append(alertRules, rule)
-		}
-
-		groups[gkey] = NewGroup(v.Name, v.Id, itv, alertRules, shouldRestore, m.opts)
+		alertsRules = append(alertsRules, rule)
 	}
 
-	return groups, nil
+	return alertsRules, nil
 }
 
 func (m *Manager) genAlertRules(
+	serviceID string,
 	alert *models.BzAlert,
-	thrds []*models.BzAlertThreshold,
-	mLabel *models.BzMonitorLabels,
 	externalLabels labels.Labels,
 ) (Rule, error) {
-	var alertLabels []models.BzAlertMetricLabel
-	err := m.engine.Where("alert_id = ?", alert.Id).Find(&alertLabels)
-	if err != nil {
+
+	var thrds []*models.BzAlertThreshold
+	if err := m.engine.Where("`alert_id` = ?", alert.Id).Find(&thrds); err != nil {
 		return nil, err
 	}
-	var labelStrs []string
-	for _, l := range alertLabels {
-		labelStrs = append(labelStrs, fmt.Sprintf(" %s%s%q ", l.Label, l.Operator, l.Value))
-	}
-
-	if mLabel.LabelStr != "" {
-		labelStrs = append(labelStrs, mLabel.LabelStr)
-	}
-
-	labelStr := strings.Join(labelStrs, ",")
 
 	var exprStrs []string
 	for _, thrd := range thrds {
+		var alertLabels []*models.BzAlertMetricLabel
+		err := m.engine.Where("`alert_id` = ? and `metric` = ?", alert.Id, thrd.Metric).Find(&alertLabels)
+		if err != nil {
+			return nil, err
+		}
+
+		var labelStrs []string
+		if serviceID != "" {
+			labelStrs = append(labelStrs, fmt.Sprintf("serviceId=%q", serviceID))
+		}
+
+		for _, l := range alertLabels {
+			labelStrs = append(labelStrs, fmt.Sprintf("%s%s%q", l.Label, l.Operator, l.Value))
+		}
+
+		labelStr := strings.Join(labelStrs, ", ")
 
 		exprStr := thrd.Metric
 		if labelStr != "" {
@@ -211,15 +190,18 @@ func (m *Manager) genAlertRules(
 		return nil, err
 	}
 	rule := NewAlertingRule(
-		alert.Id+":"+mLabel.Id,
+		alert.Id,
 		expr,
 		formats.ParseStringTime(alert.For),
 		labels.FromMap(map[string]string{
-			"expression":       exprStr,
-			"alert_id":         alert.Id,
-			"monitor_label_id": mLabel.Id,
-			"severity":         alert.Severity}),
-		labels.FromMap(map[string]string{"summary": alert.Title, "description": alert.Content}),
+			"expression": exprStr,
+			"alert_id":   alert.Id,
+			"severity":   alert.Severity,
+		}),
+		labels.FromMap(map[string]string{
+			"summary":     alert.Title,
+			"description": alert.Content,
+		}),
 		externalLabels,
 		m.restored,
 		log.With(m.logger, "alert_mysql", alert.Id, "expression", exprStr),
