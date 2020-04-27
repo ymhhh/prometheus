@@ -389,12 +389,13 @@ func (c *GlobalConfig) isZero() bool {
 }
 
 type KaConfig struct {
-	KaBroker string `yaml:"ka_broker,omitempty"`
-	KaTopic  string `yaml:"ka_topic,omitempty"`
-	KaUser   string `yaml:"ka_user,omitempty"`
-	KaPwd    string `yaml:"ka_pwd,omitempty"`
-	KaVer    string `yaml:"ka_ver,omitempty"`
-	KaGroup  string `yaml:"ka_group,omitempty"`
+	KaBroker   string `yaml:"ka_broker,omitempty"`
+	KaClientId string `yaml:"ka_clientid,omitempty"`
+	KaTopic    string `yaml:"ka_topic,omitempty"`
+	KaUser     string `yaml:"ka_user,omitempty"`
+	KaPwd      string `yaml:"ka_pwd,omitempty"`
+	KaVer      string `yaml:"ka_ver,omitempty"`
+	KaGroup    string `yaml:"ka_group,omitempty"`
 }
 
 // ScrapeConfig configures a scraping unit for Prometheus.

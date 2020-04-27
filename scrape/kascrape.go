@@ -151,6 +151,9 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64
 		}
 		sp.kaCfg.Version = version
 	}
+	if sp.config.KaConfig.KaClientId != "" {
+		sp.kaCfg.ClientID = sp.config.KaConfig.KaClientId
+	}
 
 	sp.kaCtx, sp.kaCancel = context.WithCancel(context.Background())
 
