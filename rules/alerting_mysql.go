@@ -151,37 +151,37 @@ func (m *Manager) genAlertRules(
 
 	var exprStrs []string
 	for _, thrd := range thrds {
-		var alertLabels []*models.BzAlertMetricLabel
-		err := m.engine.Where("`alert_id` = ? and `metric` = ?", alert.Id, thrd.Metric).Find(&alertLabels)
-		if err != nil {
-			return nil, err
-		}
-
-		var labelStrs []string
-		if serviceID != "" {
-			labelStrs = append(labelStrs, fmt.Sprintf("serviceId=%q", serviceID))
-		}
-
-		for _, l := range alertLabels {
-			labelStrs = append(labelStrs, fmt.Sprintf("%s%s%q", l.Label, l.Operator, l.Value))
-		}
-
-		labelStr := strings.Join(labelStrs, ", ")
-
 		exprStr := thrd.Metric
-		if labelStr != "" {
-			exprStr = fmt.Sprintf("%s{%s}", exprStr, labelStr)
-		}
+		if thrd.ThresholdType != 1 {
+			var alertLabels []*models.BzAlertMetricLabel
+			err := m.engine.Where("`alert_id` = ? and `metric` = ?", alert.Id, thrd.Metric).Find(&alertLabels)
+			if err != nil {
+				return nil, err
+			}
 
-		switch thrd.Operator {
-		case "between": // 在阈值范围内
-			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
-		case "not_between": // 在阈值范围内
-			exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
-		default:
-			exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
-		}
+			var labelStrs []string
+			if serviceID != "" {
+				labelStrs = append(labelStrs, fmt.Sprintf("serviceId=%q", serviceID))
+			}
 
+			for _, l := range alertLabels {
+				labelStrs = append(labelStrs, fmt.Sprintf("%s%s%q", l.Label, l.Operator, l.Value))
+			}
+
+			labelStr := strings.Join(labelStrs, ", ")
+			if labelStr != "" {
+				exprStr = fmt.Sprintf("%s{%s}", exprStr, labelStr)
+			}
+
+			switch thrd.Operator {
+			case "between": // 在阈值范围内
+				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+			case "not_between": // 在阈值范围内
+				exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+			default:
+				exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
+			}
+		}
 		exprStrs = append(exprStrs, exprStr)
 	}
 
