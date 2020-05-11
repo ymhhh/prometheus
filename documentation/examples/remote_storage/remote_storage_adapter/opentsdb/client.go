@@ -77,12 +77,18 @@ func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Durati
 	}
 
 	// write url
-	u, _ := url.Parse(openWUrl)
+	u, err := url.Parse(openWUrl)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "parse write url err", "err", err.Error(), "url", openWUrl)
+	}
 	u.Path = putEndpoint
 	c.writeUrl = u.String()
 
 	// read url
-	u, _ = url.Parse(openRUrl)
+	u, err = url.Parse(openRUrl)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "parse read url err", "err", err.Error(), "url", openRUrl)
+	}
 	u.Path = queryEndpoint
 	c.readUrl = u.String()
 
@@ -130,6 +136,7 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 
 	buf, err := json.Marshal(reqs)
 	if err != nil {
+		level.Error(c.logger).Log("msg", "Marshal err", "err", err.Error(), "url", c.writeUrl)
 		return 0, err
 	}
 
@@ -138,11 +145,13 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 
 	req, err := http.NewRequest("POST", c.writeUrl, bytes.NewBuffer(buf))
 	if err != nil {
+		level.Error(c.logger).Log("msg", "NewRequest err", "err", err.Error(), "url", c.writeUrl)
 		return 0, err
 	}
 	req.Header.Set("Content-Type", contentTypeJSON)
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
+		level.Error(c.logger).Log("msg", "Do err", "err", err.Error(), "url", c.writeUrl)
 		return 0, err
 	}
 	defer func() {
@@ -211,14 +220,14 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 			rawBytes, err := json.Marshal(queryReq)
 			if err != nil {
-				level.Error(c.logger).Log("msg", "marshal error", "err", err.Error())
+				level.Error(c.logger).Log("msg", "marshal error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
 
 			req, err := http.NewRequest("POST", c.readUrl, bytes.NewBuffer(rawBytes))
 			if err != nil {
-				level.Error(c.logger).Log("msg", "new request error", "err", err.Error())
+				level.Error(c.logger).Log("msg", "new request error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
@@ -226,7 +235,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 
 			resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 			if err != nil {
-				level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error())
+				level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
@@ -237,14 +246,14 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			}()
 
 			if resp.StatusCode != http.StatusOK {
-				level.Error(c.logger).Log("msg", "query opentsdb error", "err", string(rawBytes), "http_code", resp.StatusCode)
+				level.Error(c.logger).Log("msg", "query opentsdb error", "err", string(rawBytes), "http_code", resp.StatusCode, "url", c.readUrl)
 				errCh <- fmt.Errorf("got status code %v", resp.StatusCode)
 				return
 			}
 
 			rawBytes, err = ioutil.ReadAll(resp.Body)
 			if err != nil {
-				level.Error(c.logger).Log("msg", "read all error", "err", err.Error())
+				level.Error(c.logger).Log("msg", "read all error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
@@ -252,7 +261,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			var res otdbQueryResSet
 
 			if err = json.Unmarshal(rawBytes, &res); err != nil {
-				level.Error(c.logger).Log("msg", "unmarshal error", "err", err.Error())
+				level.Error(c.logger).Log("msg", "unmarshal error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
@@ -264,7 +273,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 				return mergeResult(labelsToSeries, smatchers[queryReq], &res)
 			}()
 			if err != nil {
-				level.Error(c.logger).Log("msg", "merge result error", "err", err.Error())
+				level.Error(c.logger).Log("msg", "merge result error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
