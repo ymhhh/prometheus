@@ -11,4 +11,5 @@ type BzAlertThreshold struct {
 	ComputeFunction string  `xorm:" VARCHAR(50)"`
 	Offset          string  `xorm:" VARCHAR(11)"`
 	RangeVectors    string  `xorm:" VARCHAR(11)"`
+	ByLabels        string  `xorm:" VARCHAR(100)"`
 }

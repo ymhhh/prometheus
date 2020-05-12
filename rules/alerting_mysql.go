@@ -185,6 +185,10 @@ func (m *Manager) genAlertRules(
 				exprStr = fmt.Sprintf("%s(%s)", thrd.ComputeFunction, exprStr)
 			}
 
+			if thrd.ByLabels != "" {
+				exprStr = fmt.Sprintf("%s by (%s)", exprStr, thrd.ByLabels)
+			}
+
 			switch thrd.Operator {
 			case "between": // 在阈值范围内
 				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
