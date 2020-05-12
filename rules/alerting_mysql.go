@@ -173,6 +173,18 @@ func (m *Manager) genAlertRules(
 				exprStr = fmt.Sprintf("%s{%s}", exprStr, labelStr)
 			}
 
+			if thrd.RangeVectors != "" {
+				exprStr = fmt.Sprintf("%s[%s]", exprStr, thrd.RangeVectors)
+			}
+
+			if thrd.Offset != "" {
+				exprStr = fmt.Sprintf("%s offset %s", exprStr, thrd.Offset)
+			}
+
+			if thrd.ComputeFunction != "" {
+				exprStr = fmt.Sprintf("%s(%s)", thrd.ComputeFunction, exprStr)
+			}
+
 			switch thrd.Operator {
 			case "between": // 在阈值范围内
 				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
