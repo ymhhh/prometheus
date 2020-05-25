@@ -22,6 +22,7 @@ type BzAlert struct {
 	GroupInterval   string    `xorm:"not null default '1m' comment('归组合并的时间，默认1分钟') VARCHAR(50)"`
 	RepeatInterval  string    `xorm:"not null default '1s' comment('默认的下次发送的时间，秒级，必须大于0') VARCHAR(50)"`
 	GroupBy         string    `xorm:"TEXT"`
+	ThresholdType   int32     `xorm:"comment('0:白泽拆分方式，1:自定义方式') INT(11)"`
 	For             string    `xorm:"not null default '10m' VARCHAR(50)"`
 	Version         int       `xorm:"version"`
 }

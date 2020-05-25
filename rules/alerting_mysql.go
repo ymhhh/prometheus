@@ -137,6 +137,14 @@ func (m *Manager) loadMonitorAlertRules(
 	return alertsRules, nil
 }
 
+// 告警规则的阈值类型
+const (
+	// 白泽类型，拆分规则到细粒度的指标名
+	ThresholdTypeBaize int32 = iota
+	// 用户自定义类型，用户自己传表达式
+	ThresholdTypeCustomer
+)
+
 func (m *Manager) genAlertRules(
 	serviceID string,
 	monitor *models.BzMonitor,
@@ -152,7 +160,10 @@ func (m *Manager) genAlertRules(
 	var exprStrs []string
 	for _, thrd := range thrds {
 		exprStr := thrd.Metric
-		if thrd.ThresholdType != 1 {
+		switch alert.ThresholdType {
+		case ThresholdTypeCustomer:
+			// 什么都不做
+		default:
 			var alertLabels []*models.BzAlertMetricLabel
 			err := m.engine.Where("`alert_id` = ? and `metric` = ?", alert.Id, thrd.Metric).Find(&alertLabels)
 			if err != nil {
@@ -182,21 +193,24 @@ func (m *Manager) genAlertRules(
 			}
 
 			if thrd.ComputeFunction != "" {
-				exprStr = fmt.Sprintf("%s(%s)", thrd.ComputeFunction, exprStr)
+				// TODO
+				// 比较Low，只支持上云的2级函数，以后再想解决方案
+				num := strings.Count(thrd.ComputeFunction, "(")
+				exprStr = fmt.Sprintf("%s(%s)%s", thrd.ComputeFunction, exprStr, strings.Repeat(")", num))
 			}
 
 			if thrd.ByLabels != "" {
 				exprStr = fmt.Sprintf("%s by (%s)", exprStr, thrd.ByLabels)
 			}
 
-			switch thrd.Operator {
-			case "between": // 在阈值范围内
-				exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
-			case "not_between": // 在阈值范围内
-				exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
-			default:
-				exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
-			}
+		}
+		switch thrd.Operator {
+		case "between": // 在阈值范围内
+			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+		case "not_between": // 在阈值范围内
+			exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+		default:
+			exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
 		}
 		exprStrs = append(exprStrs, exprStr)
 	}
