@@ -251,7 +251,7 @@ func (m *Manager) genAlertRules(
 
 	// 将action的内容做转换
 	for _, action := range actions {
-		annotations[strings.Replace(action.Id, "-", "_", -1)] = action.Content
+		annotations[fmt.Sprintf("act_%s", strings.Replace(action.Id, "-", "_", -1))] = action.Content
 	}
 
 	rule := NewAlertingRule(
