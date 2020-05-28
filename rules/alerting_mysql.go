@@ -157,7 +157,12 @@ func (m *Manager) genAlertRules(
 		return nil, err
 	}
 
-	var exprStrs []string
+	var actions []*models.BzAlertAction
+	if err := m.engine.Where("`alert_id` = ?", alert.Id).Find(&actions); err != nil {
+		return nil, err
+	}
+
+	var exprStrs, thresholds []string
 	for _, thrd := range thrds {
 		exprStr := thrd.Metric
 		switch alert.ThresholdType {
@@ -204,15 +209,21 @@ func (m *Manager) genAlertRules(
 			}
 
 		}
+
+		thresholdStr := ""
 		switch thrd.Operator {
 		case "between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s >= %f and %s <= %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+			thresholdStr = fmt.Sprintf("%f,%f", thrd.Threshold, thrd.ThresholdMax)
 		case "not_between": // 在阈值范围内
 			exprStr = fmt.Sprintf("%s < %f or %s > %f", exprStr, thrd.Threshold, exprStr, thrd.ThresholdMax)
+			thresholdStr = fmt.Sprintf("%f,%f", thrd.Threshold, thrd.ThresholdMax)
 		default:
 			exprStr = fmt.Sprintf("%s %s %f", exprStr, thrd.Operator, thrd.Threshold)
+			thresholdStr = fmt.Sprintf("%f", thrd.Threshold)
 		}
 		exprStrs = append(exprStrs, exprStr)
+		thresholds = append(thresholds, thresholdStr)
 	}
 
 	exprStr := strings.Join(exprStrs, " and ")
@@ -222,21 +233,33 @@ func (m *Manager) genAlertRules(
 		level.Error(m.logger).Log("expression", exprStr, "err", err)
 		return nil, err
 	}
+
+	labelsMap := map[string]string{
+		"expression":   exprStr,
+		"alert_id":     alert.Id,
+		"alert_name":   alert.Name,
+		"severity":     alert.Severity,
+		"monitor_name": monitor.Name,
+		"threshold":    strings.Join(thresholds, ";"),
+	}
+
+	annotations := map[string]string{
+		"summary":     alert.Title,
+		"description": alert.Content,
+		"value":       "{{$value}}",
+	}
+
+	// 将action的内容做转换
+	for _, action := range actions {
+		annotations[strings.Replace(action.Id, "-", "_", -1)] = action.Content
+	}
+
 	rule := NewAlertingRule(
 		alert.Id,
 		expr,
 		formats.ParseStringTime(alert.For),
-		labels.FromMap(map[string]string{
-			"expression":   exprStr,
-			"alert_id":     alert.Id,
-			"alert_name":   alert.Name,
-			"severity":     alert.Severity,
-			"monitor_name": monitor.Name,
-		}),
-		labels.FromMap(map[string]string{
-			"summary":     alert.Title,
-			"description": alert.Content,
-		}),
+		labels.FromMap(labelsMap),
+		labels.FromMap(annotations),
 		externalLabels,
 		m.restored,
 		log.With(m.logger, "alert_mysql", alert.Id, "expression", exprStr),
