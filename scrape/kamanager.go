@@ -18,16 +18,17 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"time"
+	"github.com/prometheus/prometheus/storage"
 )
 
 type KaManager struct {
 	logger    log.Logger
-	append    Appendable
+	append    storage.Appendable
 	graceShut chan struct{}
 
 	jitterSeed    uint64     // Global jitterSeed seed is used to spread scrape workload across HA setup.
@@ -40,7 +41,7 @@ type KaManager struct {
 }
 
 // NewManager is the Manager constructor
-func NewKaManager(logger log.Logger, app Appendable) *KaManager {
+func NewKaManager(logger log.Logger, app storage.Appendable) *KaManager {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
