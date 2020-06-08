@@ -76,7 +76,7 @@ func (x *XDGSCRAMClient) Done() bool {
 
 // kaScrapePool manages scrapes for sets of targets.
 type kaScrapePool struct {
-	appendable Appendable
+	appendable storage.Appendable
 	logger     log.Logger
 	config     *config.ScrapeConfig
 	mtx        sync.RWMutex
@@ -101,7 +101,7 @@ type kaScrapePool struct {
 	seriesCnt int64 // 该刮擦中新系列的大致数量(scrape_series_added)
 }
 
-func newKaScrapePool(cfg *config.ScrapeConfig, app Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
+func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -178,13 +178,7 @@ func (sp *kaScrapePool) run(t *Target) {
 	}
 
 	// 复用scrapeLoop里的函数
-	app := func() storage.Appender {
-		ad, err := sp.appendable.Appender()
-		if err != nil {
-			panic(err)
-		}
-		return appender(ad, 0)
-	}
+	app := func() storage.Appender { return appender(sp.appendable.Appender(), opts.limit) }
 	sm := func(l labels.Labels) labels.Labels {
 		return mutateSampleLabels(l, opts.target, opts.honorLabels, opts.mrc)
 	}

@@ -22,7 +22,7 @@ import (
 
 	"github.com/prometheus/prometheus/models"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -107,7 +107,15 @@ func (m *Manager) LoadMysqlGroups(
 			return nil, err
 		}
 		if len(rules) > 0 {
-			groups[monitor.Id] = NewGroup(monitor.Id, serviceID, interval, rules, shouldRestore, m.opts)
+			groups[monitor.Id] = NewGroup(GroupOptions{
+				Name:          monitor.Id,
+				File:          serviceID,
+				Interval:      interval,
+				Rules:         rules,
+				ShouldRestore: shouldRestore,
+				Opts:          m.opts,
+				done:          m.done,
+			})
 		}
 	}
 
@@ -228,7 +236,7 @@ func (m *Manager) genAlertRules(
 
 	exprStr := strings.Join(exprStrs, " and ")
 
-	expr, err := promql.ParseExpr(exprStr)
+	expr, err := parser.ParseExpr(exprStr)
 	if err != nil {
 		level.Error(m.logger).Log("expression", exprStr, "err", err)
 		return nil, err

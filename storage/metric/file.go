@@ -94,8 +94,8 @@ func NewStorage(configFile string, l log.Logger) (storage.Storage, error) {
 }
 
 // Appender returns a new appender against the storage.
-func (p *ReadyStorage) Appender() (storage.Appender, error) {
-	return p.appender, nil
+func (p *ReadyStorage) Appender() storage.Appender {
+	return p.appender
 }
 
 // Close closes the storage and all its underlying resources.
@@ -114,7 +114,6 @@ func (p *ReadyStorage) StartTime() (int64, error) {
 }
 
 func (p *Appender) Add(lsets labels.Labels, t int64, v float64) (uint64, error) {
-
 	metric, serviceID := "", "normal"
 	var lns []string
 	for _, lset := range lsets {
@@ -136,25 +135,7 @@ func (p *Appender) Add(lsets labels.Labels, t int64, v float64) (uint64, error) 
 	return uint64(len(lns)), nil
 }
 
-func (p *Appender) AddFast(lsets labels.Labels, ref uint64, t int64, v float64) error {
-	metric, serviceID := "", "normal"
-	var lns []string
-	for _, lset := range lsets {
-		switch lset.Name {
-		case labels.MetricName:
-			metric = lset.Value
-		case "serviceId":
-			serviceID = lset.Value
-		default:
-			lns = append(lns, lset.Name)
-		}
-	}
-
-	if len(metric) == 0 {
-		return errors.New("not found metric")
-	}
-	p.write(serviceID, metric, lns)
-
+func (p *Appender) AddFast(ref uint64, t int64, v float64) error {
 	return nil
 }
 
@@ -188,12 +169,12 @@ func (p *Querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (p *Querier) Select(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (p *Querier) Select(bool, *storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return &seriesSet{}, nil, nil
 }
 
 // SelectSorted returns a sorted set of series that matches the given label matchers.
-func (p *Querier) SelectSorted(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (p *Querier) SelectSorted(*storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return &seriesSet{}, nil, nil
 }
 

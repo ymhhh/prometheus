@@ -38,6 +38,7 @@ import (
 	template_text "text/template"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	conntrack "github.com/mwitkow/go-conntrack"
@@ -62,7 +63,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	prometheus_tsdb "github.com/prometheus/prometheus/storage/tsdb"
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/prometheus/util/httputil"
 	api_v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -70,24 +70,20 @@ import (
 	"github.com/prometheus/prometheus/web/ui"
 )
 
-var (
-	localhostRepresentations = []string{"127.0.0.1", "localhost"}
-
-	// Paths that are handled by the React / Reach router that should all be served the main React app's index.html.
-	reactRouterPaths = []string{
-		"/",
-		"/alerts",
-		"/config",
-		"/flags",
-		"/graph",
-		"/rules",
-		"/service-discovery",
-		"/status",
-		"/targets",
-		"/tsdb-status",
-		"/version",
-	}
-)
+// Paths that are handled by the React / Reach router that should all be served the main React app's index.html.
+var reactRouterPaths = []string{
+	"/",
+	"/alerts",
+	"/config",
+	"/flags",
+	"/graph",
+	"/rules",
+	"/service-discovery",
+	"/status",
+	"/targets",
+	"/tsdb-status",
+	"/version",
+}
 
 // withStackTrace logs the stack trace in case the request panics. The function
 // will re-raise the error which will then be handled by the net/http package.
@@ -143,6 +139,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 
 	if r != nil {
 		r.MustRegister(m.requestCounter, m.requestDuration, m.responseSize)
+		registerFederationMetrics(r)
 	}
 	return m
 }
@@ -179,6 +176,7 @@ type Handler struct {
 	scrapeManager *scrape.Manager
 	ruleManager   *rules.Manager
 	queryEngine   *promql.Engine
+	lookbackDelta time.Duration
 	context       context.Context
 	tsdb          func() *tsdb.DB
 	storage       storage.Storage
@@ -214,16 +212,18 @@ func (h *Handler) ApplyConfig(conf *config.Config) error {
 
 // Options for the web Handler.
 type Options struct {
-	Context       context.Context
-	TSDB          func() *tsdb.DB
-	TSDBCfg       prometheus_tsdb.Options
-	Storage       storage.Storage
-	QueryEngine   *promql.Engine
-	ScrapeManager *scrape.Manager
-	RuleManager   *rules.Manager
-	Notifier      *notifier.Manager
-	Version       *PrometheusVersion
-	Flags         map[string]string
+	Context               context.Context
+	TSDB                  func() *tsdb.DB
+	TSDBRetentionDuration model.Duration
+	TSDBMaxBytes          units.Base2Bytes
+	Storage               storage.Storage
+	QueryEngine           *promql.Engine
+	LookbackDelta         time.Duration
+	ScrapeManager         *scrape.Manager
+	RuleManager           *rules.Manager
+	Notifier              *notifier.Manager
+	Version               *PrometheusVersion
+	Flags                 map[string]string
 
 	ListenAddress              string
 	CORSOrigin                 *regexp.Regexp
@@ -282,6 +282,7 @@ func New(logger log.Logger, o *Options) *Handler {
 		scrapeManager: o.ScrapeManager,
 		ruleManager:   o.RuleManager,
 		queryEngine:   o.QueryEngine,
+		lookbackDelta: o.LookbackDelta,
 		tsdb:          o.TSDB,
 		storage:       o.Storage,
 		notifier:      o.Notifier,
@@ -298,6 +299,11 @@ func New(logger log.Logger, o *Options) *Handler {
 			return *h.config
 		},
 		o.Flags,
+		api_v1.GlobalURLOptions{
+			ListenAddress: o.ListenAddress,
+			Host:          o.ExternalURL.Host,
+			Scheme:        o.ExternalURL.Scheme,
+		},
 		h.testReady,
 		func() api_v1.TSDBAdmin {
 			return h.options.TSDB()
@@ -383,6 +389,7 @@ func New(logger log.Logger, o *Options) *Handler {
 				return
 			}
 			prefixedIdx := bytes.ReplaceAll(idx, []byte("PATH_PREFIX_PLACEHOLDER"), []byte(o.ExternalURL.Path))
+			prefixedIdx = bytes.ReplaceAll(prefixedIdx, []byte("CONSOLES_LINK_PLACEHOLDER"), []byte(h.consolesPath()))
 			w.Write(prefixedIdx)
 			return
 		}
@@ -648,11 +655,7 @@ func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, err = httputil.ContextFromRequest(ctx, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	ctx = httputil.ContextFromRequest(ctx, r)
 
 	// Provide URL parameters as a map for easy use. Advanced users may have need for
 	// parameters beyond the first, so provide RawParams.
@@ -753,14 +756,14 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		GODEBUG:        os.Getenv("GODEBUG"),
 	}
 
-	if h.options.TSDBCfg.RetentionDuration != 0 {
-		status.StorageRetention = h.options.TSDBCfg.RetentionDuration.String()
+	if h.options.TSDBRetentionDuration != 0 {
+		status.StorageRetention = h.options.TSDBRetentionDuration.String()
 	}
-	if h.options.TSDBCfg.MaxBytes != 0 {
+	if h.options.TSDBMaxBytes != 0 {
 		if status.StorageRetention != "" {
 			status.StorageRetention = status.StorageRetention + " or "
 		}
-		status.StorageRetention = status.StorageRetention + h.options.TSDBCfg.MaxBytes.String()
+		status.StorageRetention = status.StorageRetention + h.options.TSDBMaxBytes.String()
 	}
 
 	metrics, err := h.gatherer.Gather()
@@ -803,14 +806,14 @@ func (h *Handler) runtimeInfo() (api_v1.RuntimeInfo, error) {
 		GODEBUG:        os.Getenv("GODEBUG"),
 	}
 
-	if h.options.TSDBCfg.RetentionDuration != 0 {
-		status.StorageRetention = h.options.TSDBCfg.RetentionDuration.String()
+	if h.options.TSDBRetentionDuration != 0 {
+		status.StorageRetention = h.options.TSDBRetentionDuration.String()
 	}
-	if h.options.TSDBCfg.MaxBytes != 0 {
+	if h.options.TSDBMaxBytes != 0 {
 		if status.StorageRetention != "" {
 			status.StorageRetention = status.StorageRetention + " or "
 		}
-		status.StorageRetention = status.StorageRetention + h.options.TSDBCfg.MaxBytes.String()
+		status.StorageRetention = status.StorageRetention + h.options.TSDBMaxBytes.String()
 	}
 
 	metrics, err := h.gatherer.Gather()
@@ -970,7 +973,7 @@ func tmplFuncs(consolesPath string, opts *Options) template_text.FuncMap {
 			if err != nil {
 				return u
 			}
-			for _, lhr := range localhostRepresentations {
+			for _, lhr := range api_v1.LocalhostRepresentations {
 				if host == lhr {
 					_, ownPort, err := net.SplitHostPort(opts.ListenAddress)
 					if err != nil {
