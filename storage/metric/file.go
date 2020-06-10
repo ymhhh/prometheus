@@ -114,6 +114,7 @@ func (p *ReadyStorage) StartTime() (int64, error) {
 }
 
 func (p *Appender) Add(lsets labels.Labels, t int64, v float64) (uint64, error) {
+
 	metric, serviceID := "", "normal"
 	var lns []string
 	for _, lset := range lsets {
@@ -170,11 +171,6 @@ func (p *Querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 
 // Select returns a set of series that matches the given label matchers.
 func (p *Querier) Select(bool, *storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	return &seriesSet{}, nil, nil
-}
-
-// SelectSorted returns a sorted set of series that matches the given label matchers.
-func (p *Querier) SelectSorted(*storage.SelectHints, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return &seriesSet{}, nil, nil
 }
 

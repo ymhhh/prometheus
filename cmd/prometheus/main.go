@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -37,11 +38,14 @@ import (
 	"github.com/go-kit/kit/log/level"
 	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/oklog/run"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
+	jcfg "github.com/uber/jaeger-client-go/config"
+	jprom "github.com/uber/jaeger-lib/metrics/prometheus"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	"k8s.io/klog"
 
@@ -217,7 +221,7 @@ func main() {
 	a.Flag("storage.tsdb.retention.time", "How long to retain samples in storage. When this flag is set it overrides \"storage.tsdb.retention\". If neither this flag nor \"storage.tsdb.retention\" nor \"storage.tsdb.retention.size\" is set, the retention time defaults to "+defaultRetentionString+". Units Supported: y, w, d, h, m, s, ms.").
 		SetValue(&newFlagRetentionDuration)
 
-	a.Flag("storage.tsdb.retention.size", "[EXPERIMENTAL] Maximum number of bytes that can be stored for blocks. Units supported: KB, MB, GB, TB, PB. This flag is experimental and can be changed in future releases.").
+	a.Flag("storage.tsdb.retention.size", "[EXPERIMENTAL] Maximum number of bytes that can be stored for blocks. A unit is required, supported units: B, KB, MB, GB, TB, PB, EB. Ex: \"512MB\". This flag is experimental and can be changed in future releases.").
 		BytesVar(&cfg.tsdb.MaxBytes)
 
 	a.Flag("storage.tsdb.no-lockfile", "Do not create lockfile in data directory.").
@@ -312,7 +316,7 @@ func main() {
 
 		if cfg.tsdb.RetentionDuration == 0 && cfg.tsdb.MaxBytes == 0 {
 			cfg.tsdb.RetentionDuration = defaultRetentionDuration
-			level.Info(logger).Log("msg", "no time or size retention was set so using the default time retention", "duration", defaultRetentionDuration)
+			level.Info(logger).Log("msg", "No time or size retention was set so using the default time retention", "duration", defaultRetentionDuration)
 		}
 
 		// Check for overflows. This limits our max retention to 100y.
@@ -322,7 +326,7 @@ func main() {
 				panic(err)
 			}
 			cfg.tsdb.RetentionDuration = y
-			level.Warn(logger).Log("msg", "time retention value is too high. Limiting to: "+y.String())
+			level.Warn(logger).Log("msg", "Time retention value is too high. Limiting to: "+y.String())
 		}
 	}
 
@@ -351,7 +355,7 @@ func main() {
 	level.Info(logger).Log("build_context", version.BuildContext())
 	level.Info(logger).Log("host_details", prom_runtime.Uname())
 	level.Info(logger).Log("fd_limits", prom_runtime.FdLimits())
-	level.Info(logger).Log("vm_limits", prom_runtime.VmLimits())
+	level.Info(logger).Log("vm_limits", prom_runtime.VMLimits())
 
 	var (
 		localStorage  = &readyStorage{}
@@ -411,9 +415,10 @@ func main() {
 	)
 
 	cfg.web.Context = ctxWeb
-	cfg.web.TSDB = localStorage.Get
 	cfg.web.TSDBRetentionDuration = cfg.tsdb.RetentionDuration
 	cfg.web.TSDBMaxBytes = cfg.tsdb.MaxBytes
+	cfg.web.TSDBDir = cfg.localStoragePath
+	cfg.web.LocalStorage = localStorage
 	cfg.web.Storage = fanoutStorage
 	cfg.web.QueryEngine = queryEngine
 	cfg.web.ScrapeManager = scrapeManager
@@ -620,6 +625,13 @@ func main() {
 		})
 	}
 
+	closer, err := initTracing(logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "Unable to init tracing", "err", err)
+		os.Exit(2)
+	}
+	defer closer.Close()
+
 	var g run.Group
 	{
 		// Termination handler.
@@ -777,7 +789,6 @@ func main() {
 			func() error {
 				select {
 				case <-dbOpen:
-					break
 				// In case a shutdown is initiated before the dbOpen is released
 				case <-cancel:
 					reloadReady.Close()
@@ -1070,14 +1081,7 @@ func (s *readyStorage) Set(db *tsdb.DB, startTimeMargin int64) {
 	s.startTimeMargin = startTimeMargin
 }
 
-// Get the storage.
-func (s *readyStorage) Get() *tsdb.DB {
-	if x := s.get(); x != nil {
-		return x
-	}
-	return nil
-}
-
+// get is internal, you should use readyStorage as the front implementation layer.
 func (s *readyStorage) get() *tsdb.DB {
 	s.mtx.RLock()
 	x := s.db
@@ -1132,10 +1136,42 @@ func (n notReadyAppender) Rollback() error { return tsdb.ErrNotReady }
 
 // Close implements the Storage interface.
 func (s *readyStorage) Close() error {
-	if x := s.Get(); x != nil {
+	if x := s.get(); x != nil {
 		return x.Close()
 	}
 	return nil
+}
+
+// CleanTombstones implements the api_v1.TSDBAdminStats and api_v2.TSDBAdmin interfaces.
+func (s *readyStorage) CleanTombstones() error {
+	if x := s.get(); x != nil {
+		return x.CleanTombstones()
+	}
+	return tsdb.ErrNotReady
+}
+
+// Delete implements the api_v1.TSDBAdminStats and api_v2.TSDBAdmin interfaces.
+func (s *readyStorage) Delete(mint, maxt int64, ms ...*labels.Matcher) error {
+	if x := s.get(); x != nil {
+		return x.Delete(mint, maxt, ms...)
+	}
+	return tsdb.ErrNotReady
+}
+
+// Snapshot implements the api_v1.TSDBAdminStats and api_v2.TSDBAdmin interfaces.
+func (s *readyStorage) Snapshot(dir string, withHead bool) error {
+	if x := s.get(); x != nil {
+		return x.Snapshot(dir, withHead)
+	}
+	return tsdb.ErrNotReady
+}
+
+// Stats implements the api_v1.TSDBAdminStats interface.
+func (s *readyStorage) Stats(statsByLabelName string) (*tsdb.Stats, error) {
+	if x := s.get(); x != nil {
+		return x.Head().Stats(statsByLabelName), nil
+	}
+	return nil, tsdb.ErrNotReady
 }
 
 // tsdbOptions is tsdb.Option version with defined units.
@@ -1164,4 +1200,45 @@ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
 		MinBlockDuration:       int64(time.Duration(opts.MinBlockDuration) / time.Millisecond),
 		MaxBlockDuration:       int64(time.Duration(opts.MaxBlockDuration) / time.Millisecond),
 	}
+}
+
+func initTracing(logger log.Logger) (io.Closer, error) {
+	// Set tracing configuration defaults.
+	cfg := &jcfg.Configuration{
+		ServiceName: "prometheus",
+		Disabled:    true,
+	}
+
+	// Available options can be seen here:
+	// https://github.com/jaegertracing/jaeger-client-go#environment-variables
+	cfg, err := cfg.FromEnv()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get tracing config from environment")
+	}
+
+	jLogger := jaegerLogger{logger: log.With(logger, "component", "tracing")}
+
+	tracer, closer, err := cfg.NewTracer(
+		jcfg.Logger(jLogger),
+		jcfg.Metrics(jprom.New()),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to init tracing")
+	}
+
+	opentracing.SetGlobalTracer(tracer)
+	return closer, nil
+}
+
+type jaegerLogger struct {
+	logger log.Logger
+}
+
+func (l jaegerLogger) Error(msg string) {
+	level.Error(l.logger).Log("msg", msg)
+}
+
+func (l jaegerLogger) Infof(msg string, args ...interface{}) {
+	keyvals := []interface{}{"msg", fmt.Sprintf(msg, args...)}
+	level.Info(l.logger).Log(keyvals...)
 }
