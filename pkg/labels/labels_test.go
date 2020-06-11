@@ -19,6 +19,39 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
+func TestLabels_String(t *testing.T) {
+	cases := []struct {
+		lables   Labels
+		expected string
+	}{
+		{
+			lables: Labels{
+				{
+					Name:  "t1",
+					Value: "t1",
+				},
+				{
+					Name:  "t2",
+					Value: "t2",
+				},
+			},
+			expected: "{t1=\"t1\", t2=\"t2\"}",
+		},
+		{
+			lables:   Labels{},
+			expected: "{}",
+		},
+		{
+			lables:   nil,
+			expected: "{}",
+		},
+	}
+	for _, c := range cases {
+		str := c.lables.String()
+		testutil.Equals(t, c.expected, str)
+	}
+}
+
 func TestLabels_MatchLabels(t *testing.T) {
 	labels := Labels{
 		{
@@ -452,4 +485,49 @@ func TestLabels_Compare(t *testing.T) {
 		got := Compare(labels, test.compared)
 		testutil.Equals(t, test.expected, got, "unexpected comparison result for test case %d", i)
 	}
+}
+
+func TestLabels_Has(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{
+			input:    "foo",
+			expected: false,
+		},
+		{
+			input:    "aaa",
+			expected: true,
+		},
+	}
+
+	labelsSet := Labels{
+		{
+			Name:  "aaa",
+			Value: "111",
+		},
+		{
+			Name:  "bbb",
+			Value: "222",
+		},
+	}
+
+	for i, test := range tests {
+		got := labelsSet.Has(test.input)
+		testutil.Equals(t, test.expected, got, "unexpected comparison result for test case %d", i)
+	}
+}
+
+func TestLabels_Get(t *testing.T) {
+	testutil.Equals(t, "", Labels{{"aaa", "111"}, {"bbb", "222"}}.Get("foo"))
+	testutil.Equals(t, "111", Labels{{"aaa", "111"}, {"bbb", "222"}}.Get("aaa"))
+}
+
+func TestLabels_Copy(t *testing.T) {
+	testutil.Equals(t, Labels{{"aaa", "111"}, {"bbb", "222"}}, Labels{{"aaa", "111"}, {"bbb", "222"}}.Copy())
+}
+
+func TestLabels_Map(t *testing.T) {
+	testutil.Equals(t, map[string]string{"aaa": "111", "bbb": "222"}, Labels{{"aaa", "111"}, {"bbb", "222"}}.Map())
 }

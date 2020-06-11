@@ -119,6 +119,9 @@ func main() {
 	writers, readers := buildClients(logger, cfg)
 	if err := serve(logger, cfg.listenAddr, writers, readers); err != nil {
 		level.Error(logger).Log("msg", "Failed to listen", "addr", cfg.listenAddr, "err", err)
+		report(logger, 0, 0, true)
+		level.Info(logger).Log("msg", "See you next time!")
+		os.Exit(1)
 	}
 
 	report(logger, 0, 0, true)

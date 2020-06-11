@@ -359,15 +359,15 @@ services:
 tags:
   [ - <string> ]
 
-# Node metadata used to filter nodes for a given service.
+# Node metadata key/value pairs to filter nodes for a given service.
 [ node_meta:
-  [ <name>: <value> ... ] ]
+  [ <string>: <string> ... ] ]
 
 # The string by which Consul tags are joined into the tag label.
 [ tag_separator: <string> | default = , ]
 
 # Allow stale Consul results (see https://www.consul.io/api/features/consistency.html). Will reduce load on Consul.
-[ allow_stale: <bool> ]
+[ allow_stale: <bool> | default = true ]
 
 # The time after which the provided names are refreshed.
 # On large setup it might be a good idea to increase this value because the catalog will change all the time.
@@ -426,6 +426,7 @@ the public IP address with relabeling.
 
 The following meta labels are available on targets during [relabeling](#relabel_config):
 
+* `__meta_ec2_architecture`: the architecture of the instance
 * `__meta_ec2_availability_zone`: the availability zone in which the instance is running
 * `__meta_ec2_instance_id`: the EC2 instance ID
 * `__meta_ec2_instance_lifecycle`: the lifecycle of the EC2 instance, set only for 'spot' or 'scheduled' instances, absent otherwise
@@ -1019,37 +1020,60 @@ Serverset data must be in the JSON format, the Thrift format is not currently su
 scrape targets from [Container Monitor](https://github.com/joyent/rfd/blob/master/rfd/0027/README.md)
 discovery endpoints.
 
-The following meta labels are available on targets during relabeling:
+One of the following `<triton_role>` types can be configured to discover targets:
+
+#### `container`
+
+The `container` role discovers one target per "virtual machine" owned by the `account`.
+These are SmartOS zones or lx/KVM/bhyve branded zones.
+
+The following meta labels are available on targets during [relabeling](#relabel_config):
 
 * `__meta_triton_groups`: the list of groups belonging to the target joined by a comma separator
 * `__meta_triton_machine_alias`: the alias of the target container
 * `__meta_triton_machine_brand`: the brand of the target container
 * `__meta_triton_machine_id`: the UUID of the target container
-* `__meta_triton_machine_image`: the target containers image type
-* `__meta_triton_server_id`: the server UUID for the target container
+* `__meta_triton_machine_image`: the target container's image type
+* `__meta_triton_server_id`: the server UUID the target container is running on
 
+#### `cn`
+
+The `cn` role discovers one target for per compute node (also known as "server" or "global zone") making up the Triton infrastructure.
+The `account` must be a Triton operator and is currently required to own at least one `container`.
+
+The following meta labels are available on targets during [relabeling](#relabel_config):
+
+* `__meta_triton_machine_alias`: the hostname of the target (requires triton-cmon 1.7.0 or newer)
+* `__meta_triton_machine_id`: the UUID of the target
+
+See below for the configuration options for Triton discovery:
 ```yaml
 # The information to access the Triton discovery API.
 
-# The account to use for discovering new target containers.
+# The account to use for discovering new targets.
 account: <string>
 
-# The DNS suffix which should be applied to target containers.
+# The type of targets to discover, can be set to:
+# * "container" to discover virtual machines (SmartOS zones, lx/KVM/bhyve branded zones) running on Triton
+# * "cn" to discover compute nodes (servers/global zones) making up the Triton infrastructure
+[ role : <string> | default = "container" ]
+
+# The DNS suffix which should be applied to target.
 dns_suffix: <string>
 
 # The Triton discovery endpoint (e.g. 'cmon.us-east-3b.triton.zone'). This is
 # often the same value as dns_suffix.
 endpoint: <string>
 
-# A list of groups for which targets are retrieved. If omitted, all containers
-# available to the requesting account are scraped.
+# A list of groups for which targets are retrieved, only supported when `role` == `container`.
+# If omitted all containers owned by the requesting account are scraped.
 groups:
   [ - <string> ... ]
 
 # The port to use for discovery and metric scraping.
 [ port: <int> | default = 9163 ]
 
-# The interval which should be used for refreshing target containers.
+# The interval which should be used for refreshing targets.
 [ refresh_interval: <duration> | default = 60s ]
 
 # The Triton discovery API version.
@@ -1160,7 +1184,7 @@ Metric relabeling is applied to samples as the last step before ingestion. It
 has the same configuration format and actions as target relabeling. Metric
 relabeling does not apply to automatically generated timeseries such as `up`.
 
-One use for this is to blacklist time series that are too expensive to ingest.
+One use for this is to exclude time series that are too expensive to ingest.
 
 ### `<alert_relabel_configs>`
 
@@ -1293,6 +1317,11 @@ url: <string>
 write_relabel_configs:
   [ - <relabel_config> ... ]
 
+# Name of the remote write config, which if specified must be unique among remote write configs. 
+# The name will be used in metrics and logging in place of a generated value to help users distinguish between
+# remote write configs.
+[ name: <string> ]
+
 # Sets the `Authorization` header on every remote write request with the
 # configured username and password.
 # password and password_file are mutually exclusive.
@@ -1347,6 +1376,11 @@ with this feature.
 ```yaml
 # The URL of the endpoint to query from.
 url: <string>
+
+# Name of the remote read config, which if specified must be unique among remote read configs. 
+# The name will be used in metrics and logging in place of a generated value to help users distiguish between
+# remote read configs.
+[ name: <string> ]
 
 # An optional list of equality matchers which have to be
 # present in a selector to query the remote read endpoint.

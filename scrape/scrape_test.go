@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	dto "github.com/prometheus/client_model/go"
 	config_util "github.com/prometheus/common/config"
@@ -1014,6 +1015,48 @@ func TestScrapeLoopAppend(t *testing.T) {
 	}
 }
 
+func TestScrapeLoopAppendCacheEntryButErrNotFound(t *testing.T) {
+	// collectResultAppender's AddFast always returns ErrNotFound if we don't give it a next.
+	app := &collectResultAppender{}
+
+	sl := newScrapeLoop(context.Background(),
+		nil, nil, nil,
+		nopMutator,
+		nopMutator,
+		func() storage.Appender { return app },
+		nil,
+		0,
+		true,
+	)
+
+	fakeRef := uint64(1)
+	expValue := float64(1)
+	metric := `metric{n="1"} 1`
+	p := textparse.New([]byte(metric), "")
+
+	var lset labels.Labels
+	p.Next()
+	mets := p.Metric(&lset)
+	hash := lset.Hash()
+
+	// Create a fake entry in the cache
+	sl.cache.addRef(mets, fakeRef, lset, hash)
+	now := time.Now()
+
+	_, _, _, err := sl.append([]byte(metric), "", now)
+	testutil.Ok(t, err)
+
+	expected := []sample{
+		{
+			metric: lset,
+			t:      timestamp.FromTime(now),
+			v:      expValue,
+		},
+	}
+
+	testutil.Equals(t, expected, app.result)
+}
+
 func TestScrapeLoopAppendSampleLimit(t *testing.T) {
 	resApp := &collectResultAppender{}
 	app := &limitAppender{Appender: resApp, limit: 1}
@@ -1627,37 +1670,37 @@ func TestScrapeLoopDiscardUnnamedMetrics(t *testing.T) {
 
 func TestReusableConfig(t *testing.T) {
 	variants := []*config.ScrapeConfig{
-		&config.ScrapeConfig{
+		{
 			JobName:       "prometheus",
 			ScrapeTimeout: model.Duration(15 * time.Second),
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:       "httpd",
 			ScrapeTimeout: model.Duration(15 * time.Second),
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:       "prometheus",
 			ScrapeTimeout: model.Duration(5 * time.Second),
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:     "prometheus",
 			MetricsPath: "/metrics",
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:     "prometheus",
 			MetricsPath: "/metrics2",
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:       "prometheus",
 			ScrapeTimeout: model.Duration(5 * time.Second),
 			MetricsPath:   "/metrics2",
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:        "prometheus",
 			ScrapeInterval: model.Duration(5 * time.Second),
 			MetricsPath:    "/metrics2",
 		},
-		&config.ScrapeConfig{
+		{
 			JobName:        "prometheus",
 			ScrapeInterval: model.Duration(5 * time.Second),
 			SampleLimit:    1000,
@@ -1666,18 +1709,18 @@ func TestReusableConfig(t *testing.T) {
 	}
 
 	match := [][]int{
-		[]int{0, 2},
-		[]int{4, 5},
-		[]int{4, 6},
-		[]int{4, 7},
-		[]int{5, 6},
-		[]int{5, 7},
-		[]int{6, 7},
+		{0, 2},
+		{4, 5},
+		{4, 6},
+		{4, 7},
+		{5, 6},
+		{5, 7},
+		{6, 7},
 	}
 	noMatch := [][]int{
-		[]int{1, 2},
-		[]int{0, 4},
-		[]int{3, 4},
+		{1, 2},
+		{0, 4},
+		{3, 4},
 	}
 
 	for i, m := range match {
@@ -1877,4 +1920,11 @@ func TestReuseCacheRace(t *testing.T) {
 			SampleLimit:    i,
 		})
 	}
+}
+
+func TestCheckAddError(t *testing.T) {
+	var appErrs appendErrors
+	sl := scrapeLoop{l: log.NewNopLogger()}
+	sl.checkAddError(nil, nil, nil, storage.ErrOutOfOrderSample, nil, &appErrs)
+	testutil.Equals(t, 1, appErrs.numOutOfOrder)
 }

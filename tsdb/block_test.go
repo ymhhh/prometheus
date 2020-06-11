@@ -292,20 +292,25 @@ func TestReadIndexFormatV1(t *testing.T) {
 	q, err := NewBlockQuerier(block, 0, 1000)
 	testutil.Ok(t, err)
 	testutil.Equals(t, query(t, q, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
-		map[string][]tsdbutil.Sample{`{foo="bar"}`: []tsdbutil.Sample{sample{t: 1, v: 2}}})
+		map[string][]tsdbutil.Sample{`{foo="bar"}`: {sample{t: 1, v: 2}}})
 
 	q, err = NewBlockQuerier(block, 0, 1000)
 	testutil.Ok(t, err)
 	testutil.Equals(t, query(t, q, labels.MustNewMatcher(labels.MatchNotRegexp, "foo", "^.?$")),
 		map[string][]tsdbutil.Sample{
-			`{foo="bar"}`: []tsdbutil.Sample{sample{t: 1, v: 2}},
-			`{foo="baz"}`: []tsdbutil.Sample{sample{t: 3, v: 4}},
+			`{foo="bar"}`: {sample{t: 1, v: 2}},
+			`{foo="baz"}`: {sample{t: 3, v: 4}},
 		})
 }
 
 // createBlock creates a block with given set of series and returns its dir.
 func createBlock(tb testing.TB, dir string, series []storage.Series) string {
-	return createBlockFromHead(tb, dir, createHead(tb, series))
+	chunkDir, err := ioutil.TempDir("", "chunk_dir")
+	testutil.Ok(tb, err)
+	defer func() { testutil.Ok(tb, os.RemoveAll(chunkDir)) }()
+	head := createHead(tb, series, chunkDir)
+	defer func() { testutil.Ok(tb, head.Close()) }()
+	return createBlockFromHead(tb, dir, head)
 }
 
 func createBlockFromHead(tb testing.TB, dir string, head *Head) string {
@@ -321,10 +326,9 @@ func createBlockFromHead(tb testing.TB, dir string, head *Head) string {
 	return filepath.Join(dir, ulid.String())
 }
 
-func createHead(tb testing.TB, series []storage.Series) *Head {
-	head, err := NewHead(nil, nil, nil, 2*60*60*1000, DefaultStripeSize)
+func createHead(tb testing.TB, series []storage.Series, chunkDir string) *Head {
+	head, err := NewHead(nil, nil, nil, 2*60*60*1000, chunkDir, nil, DefaultStripeSize, nil)
 	testutil.Ok(tb, err)
-	defer head.Close()
 
 	app := head.Appender()
 	for _, s := range series {
