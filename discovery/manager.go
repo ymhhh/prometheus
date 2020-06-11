@@ -24,10 +24,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
-
 	"github.com/prometheus/prometheus/discovery/azure"
+	"github.com/prometheus/prometheus/discovery/bdp"
+	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/consul"
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/discovery/ec2"
@@ -35,8 +34,8 @@ import (
 	"github.com/prometheus/prometheus/discovery/gce"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/marathon"
-	"github.com/prometheus/prometheus/discovery/mysql"
 	"github.com/prometheus/prometheus/discovery/openstack"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 )
@@ -415,9 +414,9 @@ func (m *Manager) registerProviders(cfg sd_config.ServiceDiscoveryConfig, setNam
 			return triton.New(log.With(m.logger, "discovery", "triton"), c)
 		})
 	}
-	for _, c := range cfg.MysqlSDConfigs {
+	for _, c := range cfg.BlackboxSDConfigs {
 		add(c, func() (Discoverer, error) {
-			return mysql.NewDiscovery(c, log.With(m.logger, "discovery", "mysql"))
+			return bdp.NewBlackboxDiscovery(c, log.With(m.logger, "discovery", "mysql"))
 		})
 	}
 	if len(cfg.StaticConfigs) > 0 {

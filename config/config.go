@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/prometheus/prometheus/discovery/bdp"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/mysql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 )
@@ -141,7 +141,7 @@ type Config struct {
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
 
-	MetricStorage mysql.DBConfig `yaml:"metric_storage,omitempty"`
+	MetricStorage bdp.DBConfig `yaml:"metric_storage,omitempty"`
 	// original is the input from which the config was parsed.
 	original string
 }
@@ -749,6 +749,6 @@ func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 
 // RuleMysql 增加对数据库规则的支持
 type RuleMysql struct {
-	DBConfig mysql.DBConfig `yaml:"database,omitempty"`
+	DBConfig bdp.DBConfig   `yaml:"database,omitempty"`
 	Interval model.Duration `yaml:"interval,omitempty"`
 }
