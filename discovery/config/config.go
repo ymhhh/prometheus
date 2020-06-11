@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/prometheus/prometheus/discovery/azure"
+	"github.com/prometheus/prometheus/discovery/bdp"
 	"github.com/prometheus/prometheus/discovery/consul"
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/discovery/ec2"
@@ -24,7 +25,6 @@ import (
 	"github.com/prometheus/prometheus/discovery/gce"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/marathon"
-	"github.com/prometheus/prometheus/discovery/mysql"
 	"github.com/prometheus/prometheus/discovery/openstack"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/discovery/triton"
@@ -60,7 +60,7 @@ type ServiceDiscoveryConfig struct {
 	// List of Triton service discovery configurations.
 	TritonSDConfigs []*triton.SDConfig `yaml:"triton_sd_configs,omitempty"`
 	// added by huanghonghu
-	MysqlSDConfigs []*mysql.SDConfig `yaml:"mysql_sd_configs,omitempty"`
+	BlackboxSDConfigs []*bdp.BlackboxSDConfig `yaml:"blackbox_sd_configs,omitempty"`
 }
 
 // Validate validates the ServiceDiscoveryConfig.
@@ -125,9 +125,9 @@ func (c *ServiceDiscoveryConfig) Validate() error {
 			return errors.New("empty or null section in static_configs")
 		}
 	}
-	for _, cfg := range c.MysqlSDConfigs {
+	for _, cfg := range c.BlackboxSDConfigs {
 		if cfg == nil {
-			return errors.New("empty or null section in mysql_sd_configs")
+			return errors.New("empty or null section in blackbox_sd_configs")
 		}
 	}
 	return nil
