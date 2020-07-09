@@ -15,6 +15,7 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -303,6 +304,10 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 		r.SetLastError(err)
 		return nil, err
 	}
+	if r.logger != nil {
+		level.Info(r.logger).Log("alert_rule", "eval", "ts", ts,
+			"query", r.vector.String(), "res", res.String())
+	}
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -483,6 +488,11 @@ func (r *AlertingRule) ForEachActiveAlert(f func(*Alert)) {
 func (r *AlertingRule) sendAlerts(ctx context.Context, ts time.Time, resendDelay time.Duration, interval time.Duration, notifyFunc NotifyFunc) {
 	alerts := []*Alert{}
 	r.ForEachActiveAlert(func(alert *Alert) {
+		if r.logger != nil {
+			bs, _ := json.Marshal(alert)
+			level.Info(r.logger).Log("alert_rule", "send_alerts",
+				"need_sending", alert.needsSending(ts, resendDelay), "alert", string(bs))
+		}
 		if alert.needsSending(ts, resendDelay) {
 			alert.LastSentAt = ts
 			// Allow for two Eval or Alertmanager send failures.

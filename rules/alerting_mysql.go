@@ -107,7 +107,7 @@ func (m *Manager) LoadMysqlGroups(
 			return nil, err
 		}
 		if len(rules) > 0 {
-			groups[monitor.Id] = NewGroup(GroupOptions{
+			group := NewGroup(GroupOptions{
 				Name:          monitor.Id,
 				File:          serviceID,
 				Interval:      interval,
@@ -116,6 +116,7 @@ func (m *Manager) LoadMysqlGroups(
 				Opts:          m.opts,
 				done:          m.done,
 			})
+			groups[groupKey(group.file, group.name)] = group
 		}
 	}
 
