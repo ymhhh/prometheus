@@ -582,6 +582,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			}
 
 			if ar, ok := rule.(*AlertingRule); ok {
+				level.Info(g.logger).Log("group_rule", "alert", "rule", rule.String(), "vector", vector.String())
 				ar.sendAlerts(ctx, ts, g.opts.ResendDelay, g.interval, g.opts.NotifyFunc)
 			}
 			var (
