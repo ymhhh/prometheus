@@ -749,6 +749,5 @@ func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 
 // RuleMysql 增加对数据库规则的支持
 type RuleMysql struct {
-	DBConfig bdp.DBConfig   `yaml:"database,omitempty"`
-	Interval model.Duration `yaml:"interval,omitempty"`
+	DBConfig bdp.DBConfig `yaml:"database,omitempty"`
 }

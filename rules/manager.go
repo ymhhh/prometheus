@@ -898,16 +898,28 @@ func (m *Manager) Stop() {
 
 // Update the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
-func (m *Manager) Update(interval time.Duration, files []string, externalLabels labels.Labels) error {
+func (m *Manager) Update(
+	interval time.Duration, files []string, dbMap map[string]interface{}, externalLabels labels.Labels,
+) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	groups, errs := m.LoadGroups(interval, externalLabels, files...)
 	if errs != nil {
 		for _, e := range errs {
-			level.Error(m.logger).Log("msg", "loading groups failed", "err", e)
+			level.Error(m.logger).Log("msg", "loading files' groups failed", "err", e)
 		}
 		return errors.New("error loading rules, previous rule set restored")
+	}
+
+	mysqlGroups, err := m.LoadMysqlGroups(interval, dbMap, externalLabels)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "loading mysql' groups failed", "err", err)
+		return err
+	}
+
+	for key, group := range mysqlGroups {
+		groups[key] = group
 	}
 
 	m.runGroups(groups)

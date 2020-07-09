@@ -29,7 +29,6 @@ import (
 	"github.com/go-trellis/common/formats"
 	"github.com/go-trellis/config"
 	"github.com/go-trellis/txorm"
-	"github.com/pkg/errors"
 )
 
 func (m *Manager) initMysqlEngine(dbMap map[string]interface{}) error {
@@ -47,36 +46,24 @@ func (m *Manager) initMysqlEngine(dbMap map[string]interface{}) error {
 	return nil
 }
 
-// UpdateMysql the rule manager's state as the config requires. If
+// LoadMysqlGroups the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
-func (m *Manager) UpdateMysql(
+func (m *Manager) LoadMysqlGroups(
 	interval time.Duration, dbMap map[string]interface{}, externalLabels labels.Labels,
-) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
+) (map[string]*Group, error) {
 	if len(dbMap) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if err := m.initMysqlEngine(dbMap); err != nil {
-		return err
+		return nil, err
 	}
 
-	groups, err := m.LoadMysqlGroups(interval, externalLabels)
-	if err != nil {
-		level.Error(m.logger).Log("msg", "loading groups failed", "err", err)
-
-		return errors.New("error loading rules, previous rule set restored")
-	}
-
-	m.runGroups(groups)
-
-	return nil
+	return m.loadMysqlGroups(interval, externalLabels)
 }
 
 // LoadMysqlGroups 加载Mysql的报警组
-func (m *Manager) LoadMysqlGroups(
+func (m *Manager) loadMysqlGroups(
 	interval time.Duration, externalLabels labels.Labels,
 ) (map[string]*Group, error) {
 

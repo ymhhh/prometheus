@@ -515,15 +515,6 @@ func main() {
 				return ruleManager.Update(
 					time.Duration(cfg.GlobalConfig.EvaluationInterval),
 					files,
-					cfg.GlobalConfig.ExternalLabels,
-				)
-			},
-			func(cfg *config.Config) error {
-				if len(cfg.RuleMysql.DBConfig) == 0 {
-					return nil
-				}
-				return ruleManager.UpdateMysql(
-					time.Duration(cfg.RuleMysql.Interval),
 					cfg.RuleMysql.DBConfig,
 					cfg.GlobalConfig.ExternalLabels,
 				)
@@ -586,15 +577,6 @@ func main() {
 				return ruleManager.Update(
 					time.Duration(cfg.GlobalConfig.EvaluationInterval),
 					files,
-					cfg.GlobalConfig.ExternalLabels,
-				)
-			},
-			func(cfg *config.Config) error {
-				if len(cfg.RuleMysql.DBConfig) == 0 {
-					return nil
-				}
-				return ruleManager.UpdateMysql(
-					time.Duration(cfg.RuleMysql.Interval),
 					cfg.RuleMysql.DBConfig,
 					cfg.GlobalConfig.ExternalLabels,
 				)
