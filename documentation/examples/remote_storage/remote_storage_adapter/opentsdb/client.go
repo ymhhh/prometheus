@@ -44,30 +44,40 @@ const (
 
 // errMsg opentsdb error message
 type errMsg struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// errRet opentsdb error return
-type errRet struct {
-	Error errMsg `json:"error"`
+	Success int `json:"success"`
+	Failed  int `json:"failed"`
 }
 
 // Client allows sending batches of Prometheus samples to OpenTSDB.
 type Client struct {
-	logger   log.Logger
-	timeout  time.Duration
-	writeUrl string
-	readUrl  string
-	isRe     bool
+	logger        log.Logger
+	connTimeout   time.Duration
+	remoteTimeout time.Duration
+	writeUrl      string
+	readUrl       string
+	isRe          bool
+	isTelnet      bool
+	maxConns      int
+	maxIdle       int
+	telnetPool    *TelnetPool
 }
 
 // NewClient creates a new Client.
-func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Duration, isRe bool) *Client {
+func NewClient(logger log.Logger, openWUrl, openRUrl string, connTimeout, remoteTimeout time.Duration, isRe, isTelnet bool, maxConns, maxIdle int) *Client {
+	if maxConns <= 0 {
+		maxConns = 200
+	}
+	if maxIdle > maxConns || maxIdle < 0 {
+		maxIdle = maxConns
+	}
 	c := Client{
-		logger:  logger,
-		timeout: timeout,
-		isRe:    isRe,
+		logger:        logger,
+		connTimeout:   connTimeout,
+		remoteTimeout: remoteTimeout,
+		isRe:          isRe,
+		isTelnet:      isTelnet,
+		maxConns:      maxConns,
+		maxIdle:       maxIdle,
 	}
 
 	if openWUrl == "" {
@@ -77,20 +87,35 @@ func NewClient(logger log.Logger, openWUrl, openRUrl string, timeout time.Durati
 	}
 
 	// write url
-	u, err := url.Parse(openWUrl)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "parse write url err", "err", err.Error(), "url", openWUrl)
+	if c.isTelnet {
+		c.writeUrl = openWUrl
+	} else {
+		if !strings.HasPrefix(openWUrl, "http") {
+			openWUrl = "http://" + openWUrl
+		}
+		u, err := url.Parse(openWUrl)
+		if err != nil {
+			level.Error(c.logger).Log("msg", "parse write url err", "err", err.Error(), "url", openWUrl)
+		}
+		u.Path = putEndpoint
+		u.RawQuery = "details"
+		c.writeUrl = u.String()
 	}
-	u.Path = putEndpoint
-	c.writeUrl = u.String()
 
 	// read url
-	u, err = url.Parse(openRUrl)
+	if !strings.HasPrefix(openRUrl, "http") {
+		openRUrl = "http://" + openRUrl
+	}
+	u, err := url.Parse(openRUrl)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "parse read url err", "err", err.Error(), "url", openRUrl)
 	}
 	u.Path = queryEndpoint
 	c.readUrl = u.String()
+
+	if c.isTelnet {
+		c.telnetPool = NewTelnetPool(c.logger, openWUrl, c.maxConns, c.maxIdle, c.connTimeout, c.remoteTimeout)
+	}
 
 	return &c
 }
@@ -102,6 +127,18 @@ type StoreSamplesRequest struct {
 	Timestamp int64               `json:"timestamp"`
 	Value     float64             `json:"value"`
 	Tags      map[string]TagValue `json:"tags"`
+}
+
+func (r *StoreSamplesRequest) toTelnetString() string {
+	b, _ := r.Metric.TsdbFmt()
+	s := fmt.Sprintf("put %s %d %.3f ", string(b), r.Timestamp, r.Value)
+
+	for k, v := range r.Tags {
+		b, _ = v.TsdbFmt()
+		s += k + "=" + string(b) + " "
+	}
+
+	return s
 }
 
 // tagsFromMetric translates Prometheus metric into OpenTSDB tags.
@@ -116,8 +153,18 @@ func tagsFromMetric(m model.Metric) map[string]TagValue {
 	return tags
 }
 
-// Write sends a batch of samples to OpenTSDB via its HTTP API.
+// Write sends a batch of samples to OpenTSDB.
 func (c *Client) Write(samples model.Samples) (int, error) {
+	if c.isTelnet {
+		return c.telnetWrite(samples)
+	}
+
+	return c.httpWrite(samples)
+}
+
+// httpWrite sends a batch of samples to OpenTSDB via its HTTP API.
+func (c *Client) httpWrite(samples model.Samples) (int, error) {
+	allCnt := len(samples)
 	reqs := make([]StoreSamplesRequest, 0, len(samples))
 	for _, s := range samples {
 		v := float64(s.Value)
@@ -137,54 +184,81 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 	buf, err := json.Marshal(reqs)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "Marshal err", "err", err.Error(), "url", c.writeUrl)
-		return 0, err
+		return allCnt, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.remoteTimeout)
 	defer cancel()
 
 	req, err := http.NewRequest("POST", c.writeUrl, bytes.NewBuffer(buf))
 	if err != nil {
 		level.Error(c.logger).Log("msg", "NewRequest err", "err", err.Error(), "url", c.writeUrl)
-		return 0, err
+		return allCnt, err
 	}
 	req.Header.Set("Content-Type", contentTypeJSON)
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		level.Error(c.logger).Log("msg", "Do err", "err", err.Error(), "url", c.writeUrl)
-		return 0, err
+		return allCnt, err
 	}
 	defer func() {
 		io.Copy(ioutil.Discard, resp.Body)
 		resp.Body.Close()
 	}()
-
 	// API returns status code 204 for successful writes.
 	// http://opentsdb.net/docs/build/html/api_http/put.html
 	if resp.StatusCode < 400 {
-		return len(samples), nil
+		return 0, nil
 	}
 
 	// API returns status code 400 on error, encoding error details in the
 	// response content in JSON.
+	// {"success":1000,"failed":0,"errors":[]}
 	buf, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return allCnt, err
 	}
 
-	var r map[string]int
+	r := errMsg{}
 	if err := json.Unmarshal(buf, &r); err != nil {
-		st := errRet{}
-		err = json.Unmarshal(buf, &st)
-		if err != nil {
-			return 0, err
-		} else {
-			return 0, fmt.Errorf("code:%d msg:%s", st.Error.Code, st.Error.Message)
-		}
-
-		return 0, err
+		return allCnt, err
 	}
-	return r["success"], errors.Errorf("failed to write %d samples to OpenTSDB, %d succeeded", r["failed"], r["success"])
+	level.Debug(c.logger).Log("msg", string(buf), "url", c.writeUrl)
+
+	return r.Failed, errors.Errorf("failed to write %d samples to OpenTSDB, %d succeeded", r.Failed, r.Success)
+}
+
+// telnetWrite sends a batch of samples to OpenTSDB via its TELNET API.
+func (c *Client) telnetWrite(samples model.Samples) (int, error) {
+	var tsdbBuffer bytes.Buffer
+	for _, s := range samples {
+		v := float64(s.Value)
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			level.Debug(c.logger).Log("msg", "Cannot send value to OpenTSDB, skipping sample", "value", v, "sample", s)
+			continue
+		}
+		metric := TagValue(s.Metric[model.MetricNameLabel])
+		req := StoreSamplesRequest{
+			Metric:    metric,
+			Timestamp: s.Timestamp.Unix(),
+			Value:     v,
+			Tags:      tagsFromMetric(s.Metric),
+		}
+		tsdbBuffer.WriteString(req.toTelnetString())
+		tsdbBuffer.WriteString("\n")
+	}
+
+	// 发送数据，这时在的errCnt不一定是本次的错误数
+	errCnt, err := c.telnetPool.Send(tsdbBuffer.Bytes())
+	if err != nil {
+		level.Error(c.logger).Log("msg", "Send err", "err", err.Error(), "url", c.writeUrl)
+		return len(samples), err
+	}
+	if errCnt > 0 {
+		return errCnt, errors.Errorf("failed to write %d samples to OpenTSDB", errCnt)
+	}
+
+	return errCnt, nil
 }
 
 // Name identifies the client as an OpenTSDB client.
@@ -204,7 +278,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 		smatchers[res] = matcher
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.remoteTimeout)
 	defer cancel()
 	errCh := make(chan error, 1)
 	defer close(errCh)
@@ -381,6 +455,13 @@ func (c *Client) buildQueryReq(q *prompb.Query, isRe bool) (*otdbQueryReq, serie
 
 	req.Queries = append(req.Queries, qr)
 	return &req, smatcher, nil
+}
+
+// Destroy 释放资源
+func (c *Client) Destroy() {
+	if c.telnetPool != nil {
+		c.telnetPool.Destroy()
+	}
 }
 
 func concatLabels(labels map[string]TagValue) string {

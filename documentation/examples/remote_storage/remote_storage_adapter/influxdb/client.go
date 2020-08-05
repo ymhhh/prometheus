@@ -325,3 +325,7 @@ func (c *Client) Describe(ch chan<- *prometheus.Desc) {
 func (c *Client) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.ignoredSamples
 }
+
+// Destroy 释放资源
+func (c *Client) Destroy() {
+}

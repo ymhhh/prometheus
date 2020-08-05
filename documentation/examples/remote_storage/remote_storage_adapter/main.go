@@ -42,6 +42,7 @@ import (
 
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
+	"github.com/prometheus/common/version"
 
 	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/graphite"
 	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/influxdb"
@@ -60,11 +61,15 @@ type config struct {
 	influxdbUsername        string
 	influxdbDatabase        string
 	influxdbPassword        string
+	connTimeout             time.Duration
 	remoteTimeout           time.Duration
 	listenAddr              string
 	telemetryPath           string
 	promlogConfig           promlog.Config
-	regular                 string
+	regular                 bool
+	telnet                  bool
+	maxConns                int
+	maxIdle                 int
 }
 
 var (
@@ -100,7 +105,7 @@ var (
 	gLockCnt sync.Mutex
 	gDateCnt = time.Now().Format("2006010215")
 	gAllCnt  int64 // 总数
-	gSucCnt  int64 // 成功数
+	gErrCnt  int64 // 失败数
 )
 
 func init() {
@@ -108,6 +113,8 @@ func init() {
 	prometheus.MustRegister(sentSamples)
 	prometheus.MustRegister(failedSamples)
 	prometheus.MustRegister(sentBatchDuration)
+
+	prometheus.MustRegister(version.NewCollector("remote_storage_adapter"))
 }
 
 func main() {
@@ -115,6 +122,9 @@ func main() {
 	http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 	logger := promlog.New(&cfg.promlogConfig)
+
+	level.Info(logger).Log("msg", "starting remote_storage_adapter", "version", version.Info())
+	level.Info(logger).Log("build_context", version.BuildContext())
 
 	writers, readers := buildClients(logger, cfg)
 	if err := serve(logger, cfg.listenAddr, writers, readers); err != nil {
@@ -125,6 +135,9 @@ func main() {
 	}
 
 	report(logger, 0, 0, true)
+	for _, w := range writers {
+		w.Destroy()
+	}
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
@@ -155,16 +168,25 @@ func parseFlags() *config {
 		Default("").StringVar(&cfg.influxdbUsername)
 	a.Flag("influxdb.database", "The name of the database to use for storing samples in InfluxDB.").
 		Default("prometheus").StringVar(&cfg.influxdbDatabase)
+	a.Flag("conn-timeout", "The timeout to use when connecting to the remote storage.(default: 3s)").
+		Default("3s").DurationVar(&cfg.connTimeout)
 	a.Flag("send-timeout", "The timeout to use when sending samples to the remote storage.").
 		Default("30s").DurationVar(&cfg.remoteTimeout)
 	a.Flag("web.listen-address", "Address to listen on for web endpoints.").
 		Default(":9201").StringVar(&cfg.listenAddr)
 	a.Flag("web.telemetry-path", "Address to listen on for web endpoints.").
 		Default("/metrics").StringVar(&cfg.telemetryPath)
-	a.Flag("regular", "The program support regular expression. 0-false 1-true").
-		Default("0").StringVar(&cfg.regular)
+	a.Flag("regular", "The program support regular expression.").
+		BoolVar(&cfg.regular)
+	a.Flag("telnet", "The program support regular expression.").
+		BoolVar(&cfg.telnet)
+	a.Flag("max-conns", "The maximum connection.(default: 200)").
+		Default("200").IntVar(&cfg.maxConns)
+	a.Flag("max-idle", "The maximum number of idle connections.(default: 200)").
+		Default("200").IntVar(&cfg.maxIdle)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
+	a.Version(version.Print("Remote storage adapter"))
 
 	_, err := a.Parse(os.Args[1:])
 	if err != nil {
@@ -179,6 +201,7 @@ func parseFlags() *config {
 type writer interface {
 	Write(samples model.Samples) (int, error)
 	Name() string
+	Destroy()
 }
 
 type reader interface {
@@ -197,16 +220,16 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 		writers = append(writers, c)
 	}
 	if cfg.opentsdbWURL != "" || cfg.opentsdbRURL != "" {
-		isRe := false
-		if cfg.regular == "1" {
-			isRe = true
-		}
 		c := opentsdb.NewClient(
 			log.With(logger, "storage", "OpenTSDB"),
 			cfg.opentsdbWURL,
 			cfg.opentsdbRURL,
+			cfg.connTimeout,
 			cfg.remoteTimeout,
-			isRe,
+			cfg.regular,
+			cfg.telnet,
+			cfg.maxConns,
+			cfg.maxIdle,
 		)
 		writers = append(writers, c)
 		readers = append(readers, c)
@@ -375,9 +398,9 @@ func protoToSamples(req *prompb.WriteRequest) model.Samples {
 
 func sendSamples(logger log.Logger, w writer, samples model.Samples) {
 	begin := time.Now()
-	sucCnt, err := w.Write(samples)
+	errCnt, err := w.Write(samples)
 	duration := time.Since(begin).Seconds()
-	report(logger, len(samples), sucCnt, false)
+	report(logger, len(samples), errCnt, false)
 	if err != nil {
 		level.Warn(logger).Log("msg", "Error sending samples to remote storage", "err", err, "storage", w.Name(), "num_samples", len(samples))
 		failedSamples.WithLabelValues(w.Name()).Add(float64(len(samples)))
@@ -387,18 +410,18 @@ func sendSamples(logger log.Logger, w writer, samples model.Samples) {
 }
 
 // report save the count of scrape metric.
-func report(logger log.Logger, allCnt, sucCnt int, isSave bool) {
+func report(logger log.Logger, allCnt, errCnt int, isSave bool) {
 	gLockCnt.Lock()
 	defer gLockCnt.Unlock()
 
 	gAllCnt += int64(allCnt)
-	gSucCnt += int64(sucCnt)
+	gErrCnt += int64(errCnt)
 	curDate := time.Now().Format("2006010215")
 
 	if isSave || gDateCnt != curDate {
-		level.Info(logger).Log("msg", "storage records", "dateCnt", gDateCnt, "totalCnt", gAllCnt, "sucCnt", gSucCnt, "errCnt", gAllCnt-gSucCnt)
+		level.Info(logger).Log("msg", "storage records", "dateCnt", gDateCnt, "totalCnt", gAllCnt, "sucCnt", gAllCnt-gErrCnt, "errCnt", gErrCnt)
 		gAllCnt = 0
-		gSucCnt = 0
+		gErrCnt = 0
 		gDateCnt = curDate
 	}
 }

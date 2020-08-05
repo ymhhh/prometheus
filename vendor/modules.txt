@@ -352,6 +352,8 @@ github.com/shurcooL/httpfs/vfsutil
 github.com/shurcooL/vfsgen
 # github.com/soheilhy/cmux v0.1.4
 github.com/soheilhy/cmux
+# github.com/toolkits/conn_pool v0.0.0-20170512061817-2b758bec1177
+github.com/toolkits/conn_pool
 # github.com/uber/jaeger-client-go v2.23.1+incompatible
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/config
