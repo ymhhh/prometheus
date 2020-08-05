@@ -110,3 +110,7 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 func (c Client) Name() string {
 	return "graphite"
 }
+
+// Destroy 释放资源
+func (c *Client) Destroy() {
+}

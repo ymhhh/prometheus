@@ -86,6 +86,29 @@ func (tv TagValue) MarshalJSON() ([]byte, error) {
 	return result.Bytes(), nil
 }
 
+// TsdbFmt 和MarshalJSON功能一样，只是不加双引号
+func (tv TagValue) TsdbFmt() ([]byte, error) {
+	length := len(tv)
+	// Need at least two more bytes than in tv.
+	result := bytes.NewBuffer(make([]byte, 0, length+2))
+	for i := 0; i < length; i++ {
+		b := tv[i]
+		switch {
+		case (b >= '-' && b <= '9') || // '-', '.', '/', 0-9
+			(b >= 'A' && b <= 'Z') ||
+			(b >= 'a' && b <= 'z'):
+			result.WriteByte(b)
+		case b == '_':
+			result.WriteString("__")
+		case b == ':':
+			result.WriteString("_.")
+		default:
+			result.WriteString(fmt.Sprintf("_%X", b))
+		}
+	}
+	return result.Bytes(), nil
+}
+
 // UnmarshalJSON unmarshals JSON strings coming from OpenTSDB into Go strings
 // by applying the inverse of what is described for the MarshalJSON method.
 func (tv *TagValue) UnmarshalJSON(json []byte) error {

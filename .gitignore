@@ -8,6 +8,7 @@
 .idea
 
 /prometheus
+/remote_storage_adapter
 /promtool
 benchmark.txt
 /data
