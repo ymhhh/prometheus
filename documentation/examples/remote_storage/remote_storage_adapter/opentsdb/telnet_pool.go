@@ -50,6 +50,7 @@ func (t *OpenTsdbClient) Close() error {
 	if t.cli != nil {
 		err := t.cli.Close()
 		t.cli.Conn = nil
+		level.Info(t.logger).Log("msg", "OpenTsdbClient close connect")
 		return err
 	}
 	return nil
@@ -82,10 +83,13 @@ func (t *OpenTsdbClient) Read() {
 			break
 		} else {
 			msg = strings.Trim(msg, "\n")
-			level.Debug(t.logger).Log("msg", "read err msg", "errMsg", msg)
-			t.SetErrCnt()
+			level.Error(t.logger).Log("msg", "read err msg", "errMsg", msg)
+			if strings.HasPrefix(msg, "put:") {
+				t.SetErrCnt()
+			}
 		}
 	}
+	level.Info(t.logger).Log("msg", "OpenTsdbClient end read...")
 }
 
 // newConnPool 返回实例化 connp.ConnPool 对象
@@ -99,12 +103,14 @@ func newConnPool(logger log.Logger, address string, maxConns, maxIdle int, connT
 		// 验证address
 		_, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
+			level.Error(logger).Log("msg", "ResolveTCPAddr err", "err", err.Error(), "address", address)
 			return nil, err
 		}
 
 		// 连接opentsdb
 		conn, err := net.DialTimeout("tcp", address, connTimeout)
 		if err != nil {
+			level.Error(logger).Log("msg", "DialTimeout err", "err", err.Error(), "address", address)
 			return nil, err
 		}
 
