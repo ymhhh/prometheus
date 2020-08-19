@@ -16,7 +16,9 @@ package util
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -207,4 +209,51 @@ func UnGzip(src []byte) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func getIPFromAddr(addr net.Addr) net.IP {
+	var ip net.IP
+	switch v := addr.(type) {
+	case *net.IPNet:
+		ip = v.IP
+	case *net.IPAddr:
+		ip = v.IP
+	}
+	if ip == nil || ip.IsLoopback() {
+		return nil
+	}
+	ip = ip.To4()
+	if ip == nil {
+		return nil // not an ipv4 address
+	}
+
+	return ip
+}
+
+// ExternalIP 获取本机IP
+func ExternalIP() (string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		for _, addr := range addrs {
+			ip := getIPFromAddr(addr)
+			if ip == nil {
+				continue
+			}
+			return ip.String(), nil
+		}
+	}
+	return "", errors.New("connected to the network?")
 }

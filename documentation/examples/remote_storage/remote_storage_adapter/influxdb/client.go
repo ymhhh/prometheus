@@ -95,7 +95,7 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 			s.Timestamp.Time(),
 		)
 		if err != nil {
-			return 0, err
+			return len(samples), err
 		}
 		points = append(points, p)
 	}
@@ -106,14 +106,14 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 		RetentionPolicy: c.retentionPolicy,
 	})
 	if err != nil {
-		return 0, err
+		return len(samples), err
 	}
 	bps.AddPoints(points)
 	err = c.client.Write(bps)
 	if err != nil {
-		return 0, err
+		return len(samples), err
 	}
-	return len(samples), nil
+	return 0, nil
 }
 
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
