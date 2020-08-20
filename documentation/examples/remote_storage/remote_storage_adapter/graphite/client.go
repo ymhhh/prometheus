@@ -80,6 +80,7 @@ func pathFromMetric(m model.Metric, prefix string) string {
 }
 
 // Write sends a batch of samples to Graphite.
+// 返回处理错误samples数、错误信息
 func (c *Client) Write(samples model.Samples) (int, error) {
 	conn, err := net.DialTimeout(c.transport, c.address, c.timeout)
 	if err != nil {

@@ -79,6 +79,7 @@ func tagsFromMetric(m model.Metric) map[string]string {
 }
 
 // Write sends a batch of samples to InfluxDB via its HTTP API.
+// 返回处理错误samples数、错误信息
 func (c *Client) Write(samples model.Samples) (int, error) {
 	points := make([]*influx.Point, 0, len(samples))
 	for _, s := range samples {
