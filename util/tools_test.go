@@ -266,3 +266,12 @@ func TestGzip(t *testing.T) {
 		return
 	}
 }
+
+// TestExternalIP 测试ExternalIP函数
+func TestExternalIP(t *testing.T) {
+	ip, err := ExternalIP()
+	if err != nil {
+		t.Error("ExternalIP err:", err)
+	}
+	t.Log("ip--->", ip)
+}

@@ -63,6 +63,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/otsdb"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util"
@@ -132,6 +133,7 @@ func main() {
 		queryConcurrency    int
 		queryMaxSamples     int
 		RemoteFlushDeadline model.Duration
+		storageRemoteTsdb   bool
 
 		prometheusURL   string
 		corsRegexString string
@@ -244,6 +246,9 @@ func main() {
 
 	a.Flag("storage.remote.read-max-bytes-in-frame", "Maximum number of bytes in a single frame for streaming remote read response types before marshalling. Note that client might have limit on frame size as well. 1MB as recommended by protobuf by default.").
 		Default("1048576").IntVar(&cfg.web.RemoteReadBytesInFrame)
+
+	a.Flag("storage.remote.tsdb", "Write remote TSDB, only opentsdb is supported.").
+		BoolVar(&cfg.storageRemoteTsdb)
 
 	a.Flag("rules.alert.for-outage-tolerance", "Max time to tolerate prometheus outage for restoring \"for\" state of alert.").
 		Default("1h").SetValue(&cfg.outageTolerance)
@@ -358,16 +363,25 @@ func main() {
 	level.Info(logger).Log("vm_limits", prom_runtime.VMLimits())
 
 	var (
-		localStorage  = &readyStorage{}
-		remoteStorage = remote.NewStorage(log.With(logger, "component", "remote"), prometheus.DefaultRegisterer, localStorage.StartTime, cfg.localStoragePath, time.Duration(cfg.RemoteFlushDeadline))
-		fanoutStorage storage.Storage
+		localStorage   = &readyStorage{}
+		otsdbStorage   = otsdb.NewReadyStorage(cfg.configFile)
+		remoteStorage  = remote.NewStorage(log.With(logger, "component", "remote"), prometheus.DefaultRegisterer, localStorage.StartTime, cfg.localStoragePath, time.Duration(cfg.RemoteFlushDeadline))
+		fanoutStorage  storage.Storage
+		primaryStorage storage.Storage
 	)
+
+	// 目前本地和远程只能写一个
+	if cfg.storageRemoteTsdb {
+		primaryStorage = otsdbStorage
+	} else {
+		primaryStorage = localStorage
+	}
 
 	metricStorage, errM := metric.NewStorage(cfg.configFile, log.With(logger, "storage", "metric"))
 	if errM != nil {
-		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage)
+		fanoutStorage = storage.NewFanout(logger, primaryStorage, remoteStorage)
 	} else {
-		fanoutStorage = storage.NewFanout(logger, localStorage, remoteStorage, metricStorage)
+		fanoutStorage = storage.NewFanout(logger, primaryStorage, remoteStorage, metricStorage)
 	}
 
 	var (
@@ -387,6 +401,8 @@ func main() {
 
 		scrapeManager   = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
 		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage)
+
+		senderManager = otsdb.NewSenderManager(log.With(logger, "component", "sender manager"))
 
 		opts = promql.EngineOpts{
 			Logger:             log.With(logger, "component", "query engine"),
@@ -519,6 +535,7 @@ func main() {
 					cfg.GlobalConfig.ExternalLabels,
 				)
 			},
+			senderManager.ApplyConfig,
 		}
 	default:
 		reloaders = []func(cfg *config.Config) error{
@@ -581,6 +598,7 @@ func main() {
 					cfg.GlobalConfig.ExternalLabels,
 				)
 			},
+			senderManager.ApplyConfig,
 		}
 	}
 
@@ -713,7 +731,6 @@ func main() {
 				// we wait until the config is fully loaded.
 				<-reloadReady.C
 
-				//err := kaScrapeManager.Run(discoveryKaManagerScrape.SyncCh())
 				err := kaScrapeManager.Run(discoveryKaManagerScrape.SyncCh())
 				level.Info(logger).Log("msg", "Scrape kafka manager stopped")
 				return err
@@ -725,6 +742,23 @@ func main() {
 				kaScrapeManager.Stop()
 			},
 		)
+	}
+	{
+		// Send otsdb manager.
+		if cfg.storageRemoteTsdb {
+			g.Add(
+				func() error {
+					<-reloadReady.C
+					err := senderManager.Run()
+					level.Info(logger).Log("msg", "Sender manager stopped")
+					return err
+				},
+				func(err error) {
+					level.Info(logger).Log("msg", "Stopping sender manager...")
+					senderManager.Stop()
+				},
+			)
+		}
 	}
 	{
 		// Reload handler.

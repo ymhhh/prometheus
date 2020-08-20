@@ -91,6 +91,20 @@ var (
 		HonorTimestamps: true,
 	}
 
+	// DefaultOtsdbConfig is the default otsdb configuration.
+	DefaultOtsdbConfig = OtsdbConfig{
+		TsdbName:     "opentsb",
+		ConnTimeout:  model.Duration(3 * time.Second),
+		WriteTimeout: model.Duration(10 * time.Second),
+		MaxConns:     0,
+		MaxIdle:      0,
+		IdleTimeout:  0,
+		IsWait:       true,
+		IsTelnet:     false,
+		BatchNum:     1000,
+		MaxGoNum:     500,
+	}
+
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
 	DefaultAlertmanagerConfig = AlertmanagerConfig{
 		Scheme:     "http",
@@ -137,6 +151,7 @@ type Config struct {
 	RuleMysql       RuleMysql       `yaml:"rule_mysql,omitempty"`
 	ScrapeConfigs   []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
 	KaScrapeConfigs []*ScrapeConfig `yaml:"kascrape_configs,omitempty"`
+	OtsdbConfigs    OtsdbConfig     `yaml:"otsdb_configs,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
@@ -487,6 +502,39 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// within scrape pool.
 	for i, tg := range c.ServiceDiscoveryConfig.StaticConfigs {
 		tg.Source = fmt.Sprintf("%d", i)
+	}
+
+	return nil
+}
+
+// OtsdbConfig otsdb configuration.
+type OtsdbConfig struct {
+	TsdbName     string         `yaml:"tsdb_name,omitempty"`     // tsdb名称
+	TsdbAddr     string         `yaml:"tsdb_addr,omitempty"`     // tsdb地址
+	ConnTimeout  model.Duration `yaml:"conn_timeout,omitempty"`  // 连接超时时间
+	WriteTimeout model.Duration `yaml:"write_timeout,omitempty"` // 写数据超时暗
+	MaxConns     int            `yaml:"max_conns,omitempty"`     // 最大连接数
+	MaxIdle      int            `yaml:"max_idle,omitempty"`      // 最大空间连接数
+	IdleTimeout  model.Duration `yaml:"idle_timeout,omitempty"`  // 空间连接时长
+	IsWait       bool           `yaml:"is_wait,omitempty"`       // 如果达到最大连接数，是否等待
+	IsTelnet     bool           `yaml:"is_telnet,omitempty"`     // 是否通过telnet访问tsdb,否则使用http访问
+	BatchNum     int            `yaml:"batch_num,omitempty"`     // 一次发送的samples数
+	BatchTimeout model.Duration `yaml:"batch_timeout,omitempty"` // 如果超过时间还没达到BatchNum数，就直接发送
+	MaxGoNum     int            `yaml:"max_go_num,omitempty"`    // 最大处理协程数
+	RecvGoNum    int            `yaml:"recv_go_num,omitempty"`   // 同时从channel里接收数据的协程数
+	ReportLabels model.LabelSet `yaml:"report_labels,omitempty"` // 上报数据添加的指标，如果serviceId
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *OtsdbConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultOtsdbConfig
+	type plain OtsdbConfig
+	err := unmarshal((*plain)(c))
+	if err != nil {
+		return err
+	}
+	if len(c.TsdbAddr) == 0 {
+		return errors.New("tsdb_addr is empty")
 	}
 
 	return nil

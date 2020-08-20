@@ -79,6 +79,7 @@ func tagsFromMetric(m model.Metric) map[string]string {
 }
 
 // Write sends a batch of samples to InfluxDB via its HTTP API.
+// 返回处理错误samples数、错误信息
 func (c *Client) Write(samples model.Samples) (int, error) {
 	points := make([]*influx.Point, 0, len(samples))
 	for _, s := range samples {
@@ -95,7 +96,7 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 			s.Timestamp.Time(),
 		)
 		if err != nil {
-			return 0, err
+			return len(samples), err
 		}
 		points = append(points, p)
 	}
@@ -106,14 +107,14 @@ func (c *Client) Write(samples model.Samples) (int, error) {
 		RetentionPolicy: c.retentionPolicy,
 	})
 	if err != nil {
-		return 0, err
+		return len(samples), err
 	}
 	bps.AddPoints(points)
 	err = c.client.Write(bps)
 	if err != nil {
-		return 0, err
+		return len(samples), err
 	}
-	return len(samples), nil
+	return 0, nil
 }
 
 func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {

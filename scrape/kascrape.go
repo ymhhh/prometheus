@@ -14,11 +14,9 @@
 package scrape
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 	"hash"
 	"strings"
 	"sync"
@@ -27,7 +25,6 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -42,9 +39,6 @@ var (
 )
 
 const (
-	MSG_T_JSON = "json"
-	MSG_T_PROM = "prom"
-
 	GZIP_V01 = "G01_"
 )
 
@@ -196,7 +190,6 @@ func (sp *kaScrapePool) run(t *Target) {
 		honorTimestamps:     sp.config.HonorTimestamps,
 	}
 
-	var err error
 LOOP:
 	for {
 		select {
@@ -212,13 +205,6 @@ LOOP:
 				msg = string(b)
 			}
 
-			if sp.config.MsgType == MSG_T_JSON {
-				msg, err = sp.json2Prome(&msg)
-				if err != nil {
-					level.Error(sp.logger).Log("msg", "json to prome err", "err", err.Error())
-					continue
-				}
-			}
 			start := time.Now()
 			total, added, seriesAdded, appErr := sl.append([]byte(msg), "", start)
 			if appErr != nil {
@@ -313,104 +299,6 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 			return
 		}
 	}
-}
-
-// json2Prome json转prome格式
-func (sp *kaScrapePool) json2Prome(msg *string) (string, error) {
-	md := MetricData{}
-	err := json.Unmarshal([]byte(*msg), &md)
-	if err != nil {
-		return "", err
-	}
-
-	// label
-	var buf bytes.Buffer
-	for _, k := range sp.config.MsgLabel {
-		if label, ok := md[k].(string); ok {
-			buf.WriteString(k + `="` + label + `",`)
-		} else {
-			buf.WriteString(k + `="",`)
-		}
-		delete(md, k)
-	}
-	labels := buf.String()
-
-	// value
-	have := false
-	buf.Reset()
-	for k, v := range md {
-		// value, "val":200
-		if t, ok := v.(float64); ok {
-			if !util.CheckMetircName(k) {
-				level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k)
-				continue
-			}
-			buf.WriteString("# TYPE " + k + " untyped\n")
-			buf.WriteString(k)
-			buf.WriteString("{")
-			buf.WriteString(labels)
-			buf.WriteString("} ")
-			buf.WriteString(fmt.Sprintf("%f\n", t))
-			have = true
-			continue
-		}
-
-		// key-value map, "val":{"v1": 100, "v2":200}
-		if t, ok := v.(map[string]interface{}); ok {
-			for k1, v1 := range t {
-				if _, ok := v1.(float64); !ok {
-					continue
-				}
-				name := k + "_" + k1
-				if !util.CheckMetircName(name) {
-					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", name)
-					continue
-				}
-				buf.WriteString("# TYPE " + name + " untyped\n")
-				buf.WriteString(name)
-				buf.WriteString("{")
-				buf.WriteString(labels)
-				buf.WriteString("} ")
-				buf.WriteString(fmt.Sprintf("%f\n", v1))
-				have = true
-			}
-			continue
-		}
-
-		// key-value list, "val":[{"v11": 100, "v12":200}, {"v21":300, "v22":400}]
-		if t, ok := v.([]interface{}); ok {
-			m := map[string]float64{}
-			for _, t1 := range t {
-				if v1, ok := t1.(map[string]interface{}); ok {
-					for k2, v2 := range v1 {
-						if t2, ok := v2.(float64); ok {
-							m[k+"_"+k2] = t2
-						}
-					} // end for k2
-				}
-			} // end for _, t1
-
-			for k1, v1 := range m {
-				if !util.CheckMetircName(k1) {
-					level.Error(sp.logger).Log("msg", "metric name fmt err", "name", k1)
-					continue
-				}
-				buf.WriteString("# TYPE " + k1 + " untyped\n")
-				buf.WriteString(k1)
-				buf.WriteString("{")
-				buf.WriteString(labels)
-				buf.WriteString("} ")
-				buf.WriteString(fmt.Sprintf("%f\n", v1))
-				have = true
-			}
-		}
-	}
-
-	if !have {
-		return "", errors.New("no metric data")
-	}
-
-	return buf.String(), nil
 }
 
 // Sync converts target groups into actual scrape targets and synchronizes

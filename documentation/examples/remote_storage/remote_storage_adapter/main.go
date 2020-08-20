@@ -224,10 +224,12 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 			log.With(logger, "storage", "OpenTSDB"),
 			cfg.opentsdbWURL,
 			cfg.opentsdbRURL,
+			0,
 			cfg.connTimeout,
 			cfg.remoteTimeout,
 			cfg.regular,
 			cfg.telnet,
+			false,
 			cfg.maxConns,
 			cfg.maxIdle,
 		)

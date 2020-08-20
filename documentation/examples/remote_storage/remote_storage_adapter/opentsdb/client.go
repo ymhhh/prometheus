@@ -51,6 +51,7 @@ type errMsg struct {
 // Client allows sending batches of Prometheus samples to OpenTSDB.
 type Client struct {
 	logger        log.Logger
+	idleTimeout   time.Duration
 	connTimeout   time.Duration
 	remoteTimeout time.Duration
 	writeUrl      string
@@ -59,25 +60,31 @@ type Client struct {
 	isTelnet      bool
 	maxConns      int
 	maxIdle       int
+	wait          bool
 	telnetPool    *TelnetPool
 }
 
 // NewClient creates a new Client.
-func NewClient(logger log.Logger, openWUrl, openRUrl string, connTimeout, remoteTimeout time.Duration, isRe, isTelnet bool, maxConns, maxIdle int) *Client {
+func NewClient(logger log.Logger, openWUrl, openRUrl string, idleTimeout, connTimeout, remoteTimeout time.Duration, isRe, isTelnet, wait bool, maxConns, maxIdle int) *Client {
 	if maxConns <= 0 {
 		maxConns = 200
 	}
 	if maxIdle > maxConns || maxIdle < 0 {
 		maxIdle = maxConns
 	}
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	c := Client{
 		logger:        logger,
+		idleTimeout:   idleTimeout,
 		connTimeout:   connTimeout,
 		remoteTimeout: remoteTimeout,
 		isRe:          isRe,
 		isTelnet:      isTelnet,
 		maxConns:      maxConns,
 		maxIdle:       maxIdle,
+		wait:          wait,
 	}
 
 	if openWUrl == "" {
@@ -114,7 +121,7 @@ func NewClient(logger log.Logger, openWUrl, openRUrl string, connTimeout, remote
 	c.readUrl = u.String()
 
 	if c.isTelnet {
-		c.telnetPool = NewTelnetPool(c.logger, openWUrl, c.maxConns, c.maxIdle, c.connTimeout, c.remoteTimeout)
+		c.telnetPool = NewTelnetPool(c.logger, openWUrl, c.maxConns, c.maxIdle, c.idleTimeout, c.connTimeout, c.remoteTimeout, c.wait)
 	}
 
 	return &c
