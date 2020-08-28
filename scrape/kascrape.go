@@ -281,7 +281,11 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 	start()
 
 	// recv message
-	for i := 0; i < sp.config.RecvGoNum; i++ {
+	recvGoNum := sp.config.RecvGoNum
+	if recvGoNum <= 0 {
+		recvGoNum = 1
+	}
+	for i := 0; i < recvGoNum; i++ {
 		go sp.recv(i + 1)
 		<-time.After(300 * time.Millisecond)
 	}
