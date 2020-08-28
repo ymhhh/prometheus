@@ -446,8 +446,8 @@ type ScrapeConfig struct {
 	MetricRelabelConfigs []*relabel.Config `yaml:"metric_relabel_configs,omitempty"`
 	KaConfig             KaConfig          `yaml:"ka_config"`
 	MaxGoNum             int               `yaml:"max_go_num,omitempty"`
-	MsgType              string            `yaml:"msg_type,omitempty"`
-	MsgLabel             []string          `yaml:"msg_label,omitempty"`
+	RecvGoNum            int               `yaml:"recv_go_num,omitempty"`
+	MsgChanLen           int               `yaml:"msg_chan_len,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

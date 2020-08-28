@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -235,6 +236,9 @@ func main() {
 	a.Flag("storage.tsdb.wal-compression", "Compress the tsdb WAL.").
 		Default("false").BoolVar(&cfg.tsdb.WALCompression)
 
+	a.Flag("storage.tsdb.wal-clear", "Clear the tsdb WAL.").
+		Default("false").BoolVar(&cfg.tsdb.WALClear)
+
 	a.Flag("storage.remote.flush-deadline", "How long to wait flushing sample on shutdown or config reload.").
 		Default("1m").PlaceHolder("<duration>").SetValue(&cfg.RemoteFlushDeadline)
 
@@ -362,6 +366,11 @@ func main() {
 	level.Info(logger).Log("fd_limits", prom_runtime.FdLimits())
 	level.Info(logger).Log("vm_limits", prom_runtime.VMLimits())
 
+	if cfg.tsdb.WALClear {
+		// 清理wal目录
+		clearWAL(logger, cfg.localStoragePath)
+	}
+
 	var (
 		localStorage   = &readyStorage{}
 		otsdbStorage   = otsdb.NewReadyStorage(cfg.configFile)
@@ -402,7 +411,7 @@ func main() {
 		scrapeManager   = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
 		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage)
 
-		senderManager = otsdb.NewSenderManager(log.With(logger, "component", "sender manager"))
+		senderManager = otsdb.NewSenderManager(log.With(logger, "component", "sender manager"), cfg.web.ListenAddress)
 
 		opts = promql.EngineOpts{
 			Logger:             log.With(logger, "component", "query engine"),
@@ -1199,6 +1208,7 @@ type tsdbOptions struct {
 	NoLockfile             bool
 	AllowOverlappingBlocks bool
 	WALCompression         bool
+	WALClear               bool
 	StripeSize             int
 	MinBlockDuration       model.Duration
 	MaxBlockDuration       model.Duration
@@ -1257,4 +1267,28 @@ func (l jaegerLogger) Error(msg string) {
 func (l jaegerLogger) Infof(msg string, args ...interface{}) {
 	keyvals := []interface{}{"msg", fmt.Sprintf(msg, args...)}
 	level.Info(l.logger).Log(keyvals...)
+}
+
+// clearWAL 清理wal和chunks_head目录
+func clearWAL(logger log.Logger, localStoragePath string) {
+	level.Info(logger).Log("msg", "clear WAL", "path", localStoragePath)
+	walPath := path.Join(localStoragePath, "wal")
+	_, err := os.Stat(walPath)
+	if err == nil {
+		err = os.RemoveAll(walPath)
+		if err != nil {
+			level.Error(logger).Log("msg", "remove WAL err", "walPath", walPath, "err", err.Error())
+			return
+		}
+	}
+
+	headPath := path.Join(localStoragePath, "chunks_head")
+	_, err = os.Stat(headPath)
+	if err == nil {
+		err = os.RemoveAll(headPath)
+		if err != nil {
+			level.Error(logger).Log("msg", "remove chunks_head err", "headPath", headPath, "err", err.Error())
+			return
+		}
+	}
 }
