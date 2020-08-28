@@ -16,6 +16,7 @@ package otsdb
 import (
 	"errors"
 	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/opentsdb"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,7 @@ type tsdbWriter interface {
 // SenderManager 发送管理端
 type SenderManager struct {
 	logger    log.Logger
+	addr      string
 	otsdbConf *config.OtsdbConfig
 	otsdbCli  tsdbWriter
 	mtxOtsdb  sync.Mutex
@@ -50,12 +52,13 @@ type SenderManager struct {
 }
 
 // NewSenderManager 实例化SenderManager
-func NewSenderManager(logger log.Logger) *SenderManager {
+func NewSenderManager(logger log.Logger, addr string) *SenderManager {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	m := SenderManager{
 		logger:    logger,
+		addr:      addr,
 		graceShut: make(chan struct{}),
 	}
 
@@ -71,7 +74,7 @@ func (m *SenderManager) ApplyConfig(cfg *config.Config) error {
 	m.otsdbCli = opentsdb.NewClient(m.logger, m.otsdbConf.TsdbAddr, "", time.Duration(m.otsdbConf.IdleTimeout),
 		time.Duration(m.otsdbConf.ConnTimeout), time.Duration(m.otsdbConf.WriteTimeout),
 		false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle)
-	m.sr = newSenderReport(m.logger, m.otsdbConf)
+	m.sr = newSenderReport(m.logger, m.otsdbConf, m.addr)
 	m.sp = newSenderPool(m.logger, m.otsdbConf, m.sr, m.otsdbCli)
 
 	return nil
@@ -124,12 +127,22 @@ type SenderReport struct {
 	totalCnt  uint64
 	failedCnt uint64
 	localIp   string
+	port      string
 }
 
-func newSenderReport(logger log.Logger, otsdbConf *config.OtsdbConfig) *SenderReport {
+func newSenderReport(logger log.Logger, otsdbConf *config.OtsdbConfig, addr string) *SenderReport {
 	localIp, _ := util.ExternalIP()
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+	port := ""
+	if addr != "" {
+		arr := strings.Split(addr, ":")
+		if len(arr) > 1 {
+			port = arr[1]
+		} else {
+			port = arr[0]
+		}
 	}
 	r := SenderReport{
 		logger:    logger,
@@ -138,6 +151,7 @@ func newSenderReport(logger log.Logger, otsdbConf *config.OtsdbConfig) *SenderRe
 		totalCnt:  0,
 		failedCnt: 0,
 		localIp:   localIp,
+		port:      port,
 	}
 
 	return &r
@@ -192,6 +206,7 @@ func (r *SenderReport) report() {
 	meTotal := model.Metric{
 		"__name__": model.LabelValue(storageSamplesTotal),
 		"instance": model.LabelValue(r.localIp),
+		"port":     model.LabelValue(r.port),
 	}
 	for k, v := range r.otsdbConf.ReportLabels {
 		meTotal[k] = v
@@ -207,6 +222,7 @@ func (r *SenderReport) report() {
 	meFailed := model.Metric{
 		"__name__": model.LabelValue(storageSamplesFailed),
 		"instance": model.LabelValue(r.localIp),
+		"port":     model.LabelValue(r.port),
 	}
 	for k, v := range r.otsdbConf.ReportLabels {
 		meFailed[k] = v

@@ -16,7 +16,6 @@ package scrape
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"hash"
 	"strings"
 	"sync"
@@ -34,8 +33,7 @@ import (
 )
 
 var (
-	SHA256       scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
-	MSG_CHAN_LEN                        = 500
+	SHA256 scram.HashGeneratorFcn = func() hash.Hash { return sha256.New() }
 )
 
 const (
@@ -99,8 +97,8 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSee
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	msgLen := MSG_CHAN_LEN
-	if msgLen > cfg.MaxGoNum {
+	msgLen := cfg.MsgChanLen
+	if msgLen <= 0 {
 		msgLen = cfg.MaxGoNum
 	}
 
@@ -118,10 +116,6 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSee
 		totalCnt:   0,
 		addedCnt:   0,
 		seriesCnt:  0,
-	}
-
-	if cfg.MsgType == "MSG_T_JSON" && len(cfg.MsgLabel) == 0 {
-		return &sp, errors.New("msg label is empty")
 	}
 
 	// kafka config
@@ -231,32 +225,32 @@ func (sp *kaScrapePool) stop() {
 }
 
 // recv recv message from kafka
-func (sp *kaScrapePool) recv() {
-	level.Info(sp.logger).Log("msg", "recv message start...")
+func (sp *kaScrapePool) recv(num int) {
+	level.Info(sp.logger).Log("msg", "recv message start...", "num", num)
 	client, err := sp.getKaConn()
 	if err != nil {
-		level.Error(sp.logger).Log("msg", "recv message get connect err", "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
+		level.Error(sp.logger).Log("msg", "recv message get connect err", "num", num, "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
 		panic("get kafka connect err")
 	}
-	level.Info(sp.logger).Log("msg", "recv message get connect success...")
+	level.Info(sp.logger).Log("msg", "recv message get connect success...", "num", num)
 
 	consumer := newKaHandler(sp.message, sp.logger)
 	for {
-		level.Info(sp.logger).Log("msg", "recv message ready...")
+		level.Info(sp.logger).Log("msg", "recv message ready...", "num", num)
 		err = client.Consume(sp.kaCtx, strings.Split(sp.config.KaConfig.KaTopic, ","), consumer)
 		if err != nil {
-			level.Error(sp.logger).Log("msg", "recv kafka message err", "err", err.Error())
+			level.Error(sp.logger).Log("msg", "recv kafka message err", "num", num, "err", err.Error())
 			panic("recv kafka message err")
 		}
 		// check if context was cancelled, signaling that the consumer should stop
 		if sp.kaCtx.Err() != nil {
-			level.Info(sp.logger).Log("msg", "recv kafka message is cancelled")
+			level.Info(sp.logger).Log("msg", "recv kafka message is cancelled", "num", num)
 			break
 		}
 	}
 	client.Close()
 
-	level.Info(sp.logger).Log("msg", "recv message end...")
+	level.Info(sp.logger).Log("msg", "recv message end...", "num", num)
 }
 
 func (sp *kaScrapePool) loop(targets []*Target) {
@@ -287,7 +281,14 @@ func (sp *kaScrapePool) loop(targets []*Target) {
 	start()
 
 	// recv message
-	go sp.recv()
+	recvGoNum := sp.config.RecvGoNum
+	if recvGoNum <= 0 {
+		recvGoNum = 1
+	}
+	for i := 0; i < recvGoNum; i++ {
+		go sp.recv(i + 1)
+		<-time.After(300 * time.Millisecond)
+	}
 
 	for {
 		select {
