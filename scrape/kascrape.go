@@ -91,9 +91,10 @@ type kaScrapePool struct {
 	totalCnt  int64 // 目标暴露的样本数(scrape_samples_scraped)
 	addedCnt  int64 // 应用度量标准重新标记后剩余的样本数(scrape_samples_post_metric_relabeling)
 	seriesCnt int64 // 该刮擦中新系列的大致数量(scrape_series_added)
+	ca        *scrapeCache
 }
 
-func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed uint64, logger log.Logger) (*kaScrapePool, error) {
+func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed uint64, isTsdb bool, logger log.Logger) (*kaScrapePool, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -116,6 +117,7 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSee
 		totalCnt:   0,
 		addedCnt:   0,
 		seriesCnt:  0,
+		ca:         newScrapeCache(true, isTsdb),
 	}
 
 	// kafka config
@@ -153,7 +155,6 @@ func (sp *kaScrapePool) run(t *Target) {
 	//defer sp.mtx.RUnlock()
 	level.Info(sp.logger).Log("msg", "kaScrapPool run start...")
 
-	ca := newScrapeCache()
 	s := &targetScraper{Target: t, client: nil, timeout: 60 * time.Second}
 	mrc := sp.config.MetricRelabelConfigs
 	opts := scrapeLoopOptions{
@@ -176,7 +177,7 @@ func (sp *kaScrapePool) run(t *Target) {
 	sl := &scrapeLoop{
 		scraper:             &targetScraper{Target: t},
 		buffers:             nil,
-		cache:               ca,
+		cache:               sp.ca,
 		appender:            app,
 		sampleMutator:       sm,
 		reportSampleMutator: rsm,

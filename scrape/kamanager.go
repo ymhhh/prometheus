@@ -38,10 +38,11 @@ type KaManager struct {
 	targetSets    map[string][]*targetgroup.Group
 
 	triggerReload chan struct{}
+	isTsdb        bool
 }
 
 // NewManager is the Manager constructor
-func NewKaManager(logger log.Logger, app storage.Appendable) *KaManager {
+func NewKaManager(logger log.Logger, app storage.Appendable, isTsdb bool) *KaManager {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -53,6 +54,7 @@ func NewKaManager(logger log.Logger, app storage.Appendable) *KaManager {
 		scrapePools:   make(map[string]*kaScrapePool),
 		graceShut:     make(chan struct{}),
 		triggerReload: make(chan struct{}, 1),
+		isTsdb:        isTsdb,
 	}
 }
 
@@ -91,7 +93,7 @@ func (m *KaManager) ApplyConfig(cfg *config.Config) error {
 				failed = true
 				continue
 			}
-			sp, err := newKaScrapePool(kaScrapeConfig, m.append, m.jitterSeed, log.With(m.logger, "kascrape_pool", name))
+			sp, err := newKaScrapePool(kaScrapeConfig, m.append, m.jitterSeed, m.isTsdb, log.With(m.logger, "kascrape_pool", name))
 			if err != nil {
 				level.Error(m.logger).Log("msg", "error creating new ka scrape pool", "err", err, "kascrape_pool", name)
 				failed = true
@@ -173,7 +175,7 @@ func (m *KaManager) reload() {
 				level.Error(m.logger).Log("msg", "error reloading ka target set", "err", "invalid config id:"+setName)
 				continue
 			}
-			sp, err := newKaScrapePool(kaScrapeConfig, m.append, m.jitterSeed, log.With(m.logger, "kascrape_pool", setName))
+			sp, err := newKaScrapePool(kaScrapeConfig, m.append, m.jitterSeed, m.isTsdb, log.With(m.logger, "kascrape_pool", setName))
 			if err != nil {
 				level.Error(m.logger).Log("msg", "error creating new ka scrape pool", "err", err, "kascrape_pool", setName)
 				continue

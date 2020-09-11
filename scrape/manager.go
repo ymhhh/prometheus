@@ -101,7 +101,7 @@ func (mc *MetadataMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 }
 
 // NewManager is the Manager constructor
-func NewManager(logger log.Logger, app storage.Appendable) *Manager {
+func NewManager(logger log.Logger, app storage.Appendable, isTsdb bool) *Manager {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -112,6 +112,7 @@ func NewManager(logger log.Logger, app storage.Appendable) *Manager {
 		scrapePools:   make(map[string]*scrapePool),
 		graceShut:     make(chan struct{}),
 		triggerReload: make(chan struct{}, 1),
+		isTsdb:        isTsdb,
 	}
 	targetMetadataCache.registerManager(m)
 
@@ -132,6 +133,7 @@ type Manager struct {
 	targetSets    map[string][]*targetgroup.Group
 
 	triggerReload chan struct{}
+	isTsdb        bool
 }
 
 // Run receives and saves target set updates and triggers the scraping loops reloading.
@@ -183,7 +185,7 @@ func (m *Manager) reload() {
 				level.Error(m.logger).Log("msg", "error reloading target set", "err", "invalid config id:"+setName)
 				continue
 			}
-			sp, err := newScrapePool(scrapeConfig, m.append, m.jitterSeed, log.With(m.logger, "scrape_pool", setName))
+			sp, err := newScrapePool(scrapeConfig, m.append, m.jitterSeed, m.isTsdb, log.With(m.logger, "scrape_pool", setName))
 			if err != nil {
 				level.Error(m.logger).Log("msg", "error creating new scrape pool", "err", err, "scrape_pool", setName)
 				continue
@@ -256,7 +258,7 @@ func (m *Manager) ApplyConfig(cfg *config.Config) error {
 			sp.stop()
 			delete(m.scrapePools, name)
 		} else if !reflect.DeepEqual(sp.config, cfg) {
-			err := sp.reload(cfg)
+			err := sp.reload(cfg, m.isTsdb)
 			if err != nil {
 				level.Error(m.logger).Log("msg", "error reloading scrape pool", "err", err, "scrape_pool", name)
 				failed = true

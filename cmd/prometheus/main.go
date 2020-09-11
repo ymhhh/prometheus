@@ -408,8 +408,8 @@ func main() {
 		ctxNotify, cancelNotify = context.WithCancel(context.Background())
 		discoveryManagerNotify  = discovery.NewManager(ctxNotify, log.With(logger, "component", "discovery manager notify"), discovery.Name("notify"))
 
-		scrapeManager   = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage)
-		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage)
+		scrapeManager   = scrape.NewManager(log.With(logger, "component", "scrape manager"), fanoutStorage, cfg.storageRemoteTsdb)
+		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage, cfg.storageRemoteTsdb)
 
 		senderManager = otsdb.NewSenderManager(log.With(logger, "component", "sender manager"), cfg.web.ListenAddress)
 
