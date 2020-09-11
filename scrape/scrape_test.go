@@ -595,7 +595,7 @@ func TestScrapeLoopMetadata(t *testing.T) {
 	var (
 		signal  = make(chan struct{})
 		scraper = &testScraper{}
-		cache   = newScrapeCache()
+		cache   = newScrapeCache(false, false)
 	)
 	defer close(signal)
 

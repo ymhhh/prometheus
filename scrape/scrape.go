@@ -189,7 +189,7 @@ const maxAheadTime = 10 * time.Minute
 
 type labelsMutator func(labels.Labels) labels.Labels
 
-func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed uint64, logger log.Logger) (*scrapePool, error) {
+func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed uint64, isTsdb bool, logger log.Logger) (*scrapePool, error) {
 	targetScrapePools.Inc()
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -217,7 +217,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed 
 		// Update the targets retrieval function for metadata to a new scrape cache.
 		cache := opts.cache
 		if cache == nil {
-			cache = newScrapeCache()
+			cache = newScrapeCache(false, isTsdb)
 		}
 		opts.target.SetMetadataStore(cache)
 
@@ -234,6 +234,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSeed 
 			cache,
 			jitterSeed,
 			opts.honorTimestamps,
+			isTsdb,
 		)
 	}
 
@@ -283,7 +284,7 @@ func (sp *scrapePool) stop() {
 // reload the scrape pool with the given scrape configuration. The target state is preserved
 // but all scrape loops are restarted with the new scrape configuration.
 // This method returns after all scrape loops that were stopped have stopped scraping.
-func (sp *scrapePool) reload(cfg *config.ScrapeConfig) error {
+func (sp *scrapePool) reload(cfg *config.ScrapeConfig, isTsdb bool) error {
 	targetScrapePoolReloads.Inc()
 	start := time.Now()
 
@@ -317,7 +318,7 @@ func (sp *scrapePool) reload(cfg *config.ScrapeConfig) error {
 			oldLoop.disableEndOfRunStalenessMarkers()
 			cache = oc
 		} else {
-			cache = newScrapeCache()
+			cache = newScrapeCache(false, isTsdb)
 		}
 		var (
 			t       = sp.activeTargets[fp]
@@ -649,8 +650,10 @@ type scrapeCache struct {
 	seriesCur  map[uint64]labels.Labels
 	seriesPrev map[uint64]labels.Labels
 
-	metaMtx  sync.Mutex
+	metaMtx  sync.RWMutex
 	metadata map[string]*metaEntry
+	needMtx  bool // 是否需要加锁
+	isTsdb   bool // 直接写tsdb
 }
 
 // metaEntry holds meta information about a metric.
@@ -666,20 +669,36 @@ func (m *metaEntry) size() int {
 	return len(m.help) + len(m.unit) + len(m.typ)
 }
 
-func newScrapeCache() *scrapeCache {
+func newScrapeCache(needMtx, isTsdb bool) *scrapeCache {
 	return &scrapeCache{
 		series:        map[string]*cacheEntry{},
 		droppedSeries: map[string]*uint64{},
 		seriesCur:     map[uint64]labels.Labels{},
 		seriesPrev:    map[uint64]labels.Labels{},
 		metadata:      map[string]*metaEntry{},
+		needMtx:       needMtx,
+		isTsdb:        isTsdb,
 	}
 }
 
 func (c *scrapeCache) iterDone(flushCache bool) {
-	c.metaMtx.Lock()
-	count := len(c.series) + len(c.droppedSeries) + len(c.metadata)
-	c.metaMtx.Unlock()
+	if c.isTsdb {
+		return
+	}
+	count := 0
+	if c.needMtx {
+		c.metaMtx.Lock()
+		defer c.metaMtx.Unlock()
+		count = len(c.series) + len(c.droppedSeries) + len(c.metadata)
+	} else {
+		c.metaMtx.RLock()
+		count = len(c.series) + len(c.droppedSeries) + len(c.metadata)
+		c.metaMtx.RUnlock()
+	}
+
+	//c.metaMtx.Lock()
+	//count := len(c.series) + len(c.droppedSeries) + len(c.metadata)
+	//c.metaMtx.Unlock()
 
 	if flushCache {
 		c.successfulCount = count
@@ -707,14 +726,18 @@ func (c *scrapeCache) iterDone(flushCache bool) {
 				delete(c.droppedSeries, s)
 			}
 		}
-		c.metaMtx.Lock()
+		if !c.needMtx {
+			c.metaMtx.Lock()
+		}
 		for m, e := range c.metadata {
 			// Keep metadata around for 10 scrapes after its metric disappeared.
 			if c.iter-e.lastIter > 10 {
 				delete(c.metadata, m)
 			}
 		}
-		c.metaMtx.Unlock()
+		if !c.needMtx {
+			c.metaMtx.Unlock()
+		}
 
 		c.iter++
 	}
@@ -729,6 +752,15 @@ func (c *scrapeCache) iterDone(flushCache bool) {
 }
 
 func (c *scrapeCache) get(met string) (*cacheEntry, bool) {
+	if c.isTsdb {
+		return nil, false
+	}
+
+	if c.needMtx {
+		c.metaMtx.RLock()
+		defer c.metaMtx.RUnlock()
+	}
+
 	e, ok := c.series[met]
 	if !ok {
 		return nil, false
@@ -738,6 +770,15 @@ func (c *scrapeCache) get(met string) (*cacheEntry, bool) {
 }
 
 func (c *scrapeCache) addRef(met string, ref uint64, lset labels.Labels, hash uint64) {
+	if c.isTsdb {
+		return
+	}
+
+	if c.needMtx {
+		c.metaMtx.Lock()
+		defer c.metaMtx.Unlock()
+	}
+
 	if ref == 0 {
 		return
 	}
@@ -745,11 +786,29 @@ func (c *scrapeCache) addRef(met string, ref uint64, lset labels.Labels, hash ui
 }
 
 func (c *scrapeCache) addDropped(met string) {
+	if c.isTsdb {
+		return
+	}
+
+	if c.needMtx {
+		c.metaMtx.Lock()
+		defer c.metaMtx.Unlock()
+	}
+
 	iter := c.iter
 	c.droppedSeries[met] = &iter
 }
 
 func (c *scrapeCache) getDropped(met string) bool {
+	if c.isTsdb {
+		return false
+	}
+
+	if c.needMtx {
+		c.metaMtx.RLock()
+		defer c.metaMtx.RUnlock()
+	}
+
 	iterp, ok := c.droppedSeries[met]
 	if ok {
 		*iterp = c.iter
@@ -758,10 +817,28 @@ func (c *scrapeCache) getDropped(met string) bool {
 }
 
 func (c *scrapeCache) trackStaleness(hash uint64, lset labels.Labels) {
+	if c.isTsdb {
+		return
+	}
+
+	if c.needMtx {
+		c.metaMtx.Lock()
+		defer c.metaMtx.Unlock()
+	}
+
 	c.seriesCur[hash] = lset
 }
 
 func (c *scrapeCache) forEachStale(f func(labels.Labels) bool) {
+	if c.isTsdb {
+		return
+	}
+
+	if c.needMtx {
+		c.metaMtx.RLock()
+		defer c.metaMtx.RUnlock()
+	}
+
 	for h, lset := range c.seriesPrev {
 		if _, ok := c.seriesCur[h]; !ok {
 			if !f(lset) {
@@ -772,6 +849,10 @@ func (c *scrapeCache) forEachStale(f func(labels.Labels) bool) {
 }
 
 func (c *scrapeCache) setType(metric []byte, t textparse.MetricType) {
+	if c.isTsdb {
+		return
+	}
+
 	c.metaMtx.Lock()
 
 	e, ok := c.metadata[yoloString(metric)]
@@ -786,6 +867,10 @@ func (c *scrapeCache) setType(metric []byte, t textparse.MetricType) {
 }
 
 func (c *scrapeCache) setHelp(metric, help []byte) {
+	if c.isTsdb {
+		return
+	}
+
 	c.metaMtx.Lock()
 
 	e, ok := c.metadata[yoloString(metric)]
@@ -802,6 +887,10 @@ func (c *scrapeCache) setHelp(metric, help []byte) {
 }
 
 func (c *scrapeCache) setUnit(metric, unit []byte) {
+	if c.isTsdb {
+		return
+	}
+
 	c.metaMtx.Lock()
 
 	e, ok := c.metadata[yoloString(metric)]
@@ -818,8 +907,12 @@ func (c *scrapeCache) setUnit(metric, unit []byte) {
 }
 
 func (c *scrapeCache) GetMetadata(metric string) (MetricMetadata, bool) {
-	c.metaMtx.Lock()
-	defer c.metaMtx.Unlock()
+	if c.isTsdb {
+		return MetricMetadata{}, false
+	}
+
+	c.metaMtx.RLock()
+	defer c.metaMtx.RUnlock()
 
 	m, ok := c.metadata[metric]
 	if !ok {
@@ -834,8 +927,12 @@ func (c *scrapeCache) GetMetadata(metric string) (MetricMetadata, bool) {
 }
 
 func (c *scrapeCache) ListMetadata() []MetricMetadata {
-	c.metaMtx.Lock()
-	defer c.metaMtx.Unlock()
+	if c.isTsdb {
+		return []MetricMetadata{}
+	}
+
+	c.metaMtx.RLock()
+	defer c.metaMtx.RUnlock()
 
 	res := make([]MetricMetadata, 0, len(c.metadata))
 
@@ -852,8 +949,12 @@ func (c *scrapeCache) ListMetadata() []MetricMetadata {
 
 // MetadataSize returns the size of the metadata cache.
 func (c *scrapeCache) SizeMetadata() (s int) {
-	c.metaMtx.Lock()
-	defer c.metaMtx.Unlock()
+	if c.isTsdb {
+		return 0
+	}
+
+	c.metaMtx.RLock()
+	defer c.metaMtx.RUnlock()
 	for _, e := range c.metadata {
 		s += e.size()
 	}
@@ -863,8 +964,12 @@ func (c *scrapeCache) SizeMetadata() (s int) {
 
 // MetadataLen returns the number of metadata entries in the cache.
 func (c *scrapeCache) LengthMetadata() int {
-	c.metaMtx.Lock()
-	defer c.metaMtx.Unlock()
+	if c.isTsdb {
+		return 0
+	}
+
+	c.metaMtx.RLock()
+	defer c.metaMtx.RUnlock()
 
 	return len(c.metadata)
 }
@@ -879,6 +984,7 @@ func newScrapeLoop(ctx context.Context,
 	cache *scrapeCache,
 	jitterSeed uint64,
 	honorTimestamps bool,
+	isTsdb bool,
 ) *scrapeLoop {
 	if l == nil {
 		l = log.NewNopLogger()
@@ -887,7 +993,7 @@ func newScrapeLoop(ctx context.Context,
 		buffers = pool.New(1e3, 1e6, 3, func(sz int) interface{} { return make([]byte, 0, sz) })
 	}
 	if cache == nil {
-		cache = newScrapeCache()
+		cache = newScrapeCache(false, isTsdb)
 	}
 	sl := &scrapeLoop{
 		scraper:             sc,
