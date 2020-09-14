@@ -103,6 +103,7 @@ var (
 		IsTelnet:     false,
 		BatchNum:     1000,
 		MaxGoNum:     500,
+		Retention:    "autogen",
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
