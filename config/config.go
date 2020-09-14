@@ -103,6 +103,7 @@ var (
 		IsTelnet:     false,
 		BatchNum:     1000,
 		MaxGoNum:     500,
+		Retention:    "autogen",
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
@@ -523,6 +524,10 @@ type OtsdbConfig struct {
 	MaxGoNum     int            `yaml:"max_go_num,omitempty"`    // 最大处理协程数
 	RecvGoNum    int            `yaml:"recv_go_num,omitempty"`   // 同时从channel里接收数据的协程数
 	ReportLabels model.LabelSet `yaml:"report_labels,omitempty"` // 上报数据添加的指标，如果serviceId
+	Database     string         `yaml:"database,omitempty"`      // 数据库名，influxdb配置项
+	UserName     string         `yaml:"username,omitempty"`      // 用户名，influxdb配置项
+	Password     string         `yaml:"password,omitempty"`      // 密码，influxdb配置项
+	Retention    string         `yaml:"retention,omitempty"`     // 保留策略，influxdb配置项
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
