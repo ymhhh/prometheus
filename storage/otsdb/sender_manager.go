@@ -15,6 +15,8 @@ package otsdb
 
 import (
 	"errors"
+	influx "github.com/influxdata/influxdb/client/v2"
+	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/influxdb"
 	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/opentsdb"
 	"strings"
 	"sync"
@@ -71,9 +73,22 @@ func (m *SenderManager) ApplyConfig(cfg *config.Config) error {
 	defer m.mtxOtsdb.Unlock()
 
 	m.otsdbConf = &cfg.OtsdbConfigs
-	m.otsdbCli = opentsdb.NewClient(m.logger, m.otsdbConf.TsdbAddr, "", time.Duration(m.otsdbConf.IdleTimeout),
-		time.Duration(m.otsdbConf.ConnTimeout), time.Duration(m.otsdbConf.WriteTimeout),
-		false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle)
+	if m.otsdbConf.TsdbName == "influxdb" {
+		// influxdb
+		influxConf := influx.HTTPConfig{
+			Addr:     m.otsdbConf.TsdbAddr,
+			Username: m.otsdbConf.UserName,
+			Password: m.otsdbConf.Password,
+			Timeout:  time.Duration(m.otsdbConf.WriteTimeout),
+		}
+		m.otsdbCli = influxdb.NewClient(m.logger, influxConf, m.otsdbConf.Database, m.otsdbConf.Retention)
+	} else {
+		// 默认opentsdb
+		m.otsdbCli = opentsdb.NewClient(m.logger, m.otsdbConf.TsdbAddr, "", time.Duration(m.otsdbConf.IdleTimeout),
+			time.Duration(m.otsdbConf.ConnTimeout), time.Duration(m.otsdbConf.WriteTimeout),
+			false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle)
+	}
+
 	m.sr = newSenderReport(m.logger, m.otsdbConf, m.addr)
 	m.sp = newSenderPool(m.logger, m.otsdbConf, m.sr, m.otsdbCli)
 
