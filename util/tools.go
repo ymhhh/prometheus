@@ -16,6 +16,8 @@ package util
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"io/ioutil"
 	"net"
@@ -23,6 +25,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/shurcooL/httpfs/filter"
@@ -256,4 +259,72 @@ func ExternalIP() (string, error) {
 		}
 	}
 	return "", errors.New("connected to the network?")
+}
+
+// IsIpv4 检验字符串是否是ipv4
+//   参数
+//     ip: IP地址
+//   返回
+//     是否IPv6地址
+func IsIpv4(ip string) bool {
+	pattern := `^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$`
+	if m, _ := regexp.MatchString(pattern, ip); m {
+		return true
+	}
+
+	return false
+}
+
+// IpItoa IP整型转字符串
+// 如: "10.58.1.29" => 171573533
+//   参数
+//     iIp: IP整型形式
+//   返回
+//     IP字符串形式
+func IpItoa(iIp int64) string {
+	var bs [4]byte
+	bs[0] = byte(iIp & 0xFF)
+	bs[1] = byte((iIp >> 8) & 0xFF)
+	bs[2] = byte((iIp >> 16) & 0xFF)
+	bs[3] = byte((iIp >> 24) & 0xFF)
+
+	return net.IPv4(bs[3], bs[2], bs[1], bs[0]).String()
+}
+
+// IpAtoi IP字符串转整型
+// 如: 171573533 => "10.58.1.29"
+//   参数
+//     sIp: IP字符串形式
+//   返回
+//     IP整型形式
+func IpAtoi(sIp string) int64 {
+	if !IsIpv4(sIp) {
+		return -1
+	}
+
+	bits := strings.Split(sIp, ".")
+	b0, _ := strconv.Atoi(bits[0])
+	b1, _ := strconv.Atoi(bits[1])
+	b2, _ := strconv.Atoi(bits[2])
+	b3, _ := strconv.Atoi(bits[3])
+
+	var sum int64
+
+	sum += int64(b0) << 24
+	sum += int64(b1) << 16
+	sum += int64(b2) << 8
+	sum += int64(b3)
+
+	return sum
+}
+
+//Md5 生成32位md5串
+//   参数
+//     s: 要加密的串
+//   返回
+//     md5后的结果
+func Md5(s string) string {
+	h := md5.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
 }
