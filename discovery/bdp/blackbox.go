@@ -132,7 +132,8 @@ type BlackboxDiscovery struct {
 	cfg    *BlackboxSDConfig
 	logger log.Logger
 
-	tagsData map[int64]model.LabelSet
+	tagsData    map[int64]model.LabelSet
+	lastRefresh map[string]int
 }
 
 // NewBlackboxDiscovery returns a BlackboxDiscovery function that calls a refresh() function at every interval.
@@ -178,6 +179,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 	}
 
 	var result []*targetgroup.Group
+	curRefresh := map[string]int{}
 
 	for _, probe := range data {
 		instances := strings.Split(probe.Instances, ",")
@@ -217,10 +219,12 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 			if _, ok := mGroups[tagKey]; ok {
 				mGroups[tagKey].Targets = append(mGroups[tagKey].Targets, model.LabelSet{model.AddressLabel: model.LabelValue(instance)})
 			} else {
+				source := fmt.Sprintf("%s_%s", probe.Id, tagKey)
+				curRefresh[source] = 1
 				g := targetgroup.Group{
 					Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(instance)}},
 					Labels:  tags.Merge(gLabels),
-					Source:  fmt.Sprintf("%s_%s", probe.Id, tagKey),
+					Source:  source,
 				}
 				mGroups[tagKey] = &g
 			}
@@ -231,6 +235,21 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 		}
 	}
 
+	// 清除老的target
+	for k, _ := range p.lastRefresh {
+		if _, ok := curRefresh[k]; ok {
+			continue
+		}
+
+		g := targetgroup.Group{
+			Targets: []model.LabelSet{},
+			Labels:  model.LabelSet{},
+			Source:  k,
+		}
+		result = append(result, &g)
+	}
+	p.lastRefresh = curRefresh
+	
 	return result, nil
 }
 
