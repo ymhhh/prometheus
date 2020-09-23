@@ -105,6 +105,7 @@ import (
 
 // BlackboxSDConfig is the configuration for file based discovery.
 type BlackboxSDConfig struct {
+	ProbeName       string         `yaml:"probe_name"`
 	Type            string         `yaml:"type"`
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
 
@@ -174,7 +175,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 
 	p.tagsData = make(map[int64]model.LabelSet)
 	var data []*models.BzAlertProbe
-	if err := p.engine.Where("`type` = ?", p.cfg.Type).Find(&data); err != nil {
+	if err := p.engine.Where("`name` = ? and `type` = ?", p.cfg.ProbeName, p.cfg.Type).Find(&data); err != nil {
 		return nil, err
 	}
 
