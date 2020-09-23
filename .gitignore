@@ -5,6 +5,7 @@
 /*.json
 *.exe
 /tsdb/tsdb
+/tmp
 .idea
 
 /prometheus

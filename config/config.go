@@ -158,6 +158,7 @@ type Config struct {
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
 
 	MetricStorage bdp.DBConfig `yaml:"metric_storage,omitempty"`
+	DBConfig      bdp.DBConfig `yaml:"database,omitempty"`
 	// original is the input from which the config was parsed.
 	original string
 }

@@ -163,6 +163,7 @@ type Manager struct {
 
 	// The triggerSend channel signals to the manager that new updates have been received from providers.
 	triggerSend chan struct{}
+	dbConfig    *bdp.DBConfig
 }
 
 // Run starts the background processing
@@ -416,7 +417,7 @@ func (m *Manager) registerProviders(cfg sd_config.ServiceDiscoveryConfig, setNam
 	}
 	for _, c := range cfg.BlackboxSDConfigs {
 		add(c, func() (Discoverer, error) {
-			return bdp.NewBlackboxDiscovery(c, log.With(m.logger, "discovery", "mysql"))
+			return bdp.NewBlackboxDiscovery(c, m.dbConfig, log.With(m.logger, "discovery", "probe"))
 		})
 	}
 	if len(cfg.StaticConfigs) > 0 {
@@ -435,6 +436,11 @@ func (m *Manager) registerProviders(cfg sd_config.ServiceDiscoveryConfig, setNam
 		})
 	}
 	return failedCount
+}
+
+// SetDbConfig set db config
+func (m *Manager) SetDbConfig(dbCfg *bdp.DBConfig) {
+	m.dbConfig = dbCfg
 }
 
 // StaticProvider holds a list of target groups that never change.

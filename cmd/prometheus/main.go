@@ -571,6 +571,7 @@ func main() {
 				for _, v := range cfg.ScrapeConfigs {
 					c[v.JobName] = v.ServiceDiscoveryConfig
 				}
+				discoveryManagerScrape.SetDbConfig(&cfg.DBConfig)
 				return discoveryManagerScrape.ApplyConfig(c)
 			},
 			kaScrapeManager.ApplyConfig,
