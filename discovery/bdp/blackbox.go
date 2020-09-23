@@ -175,7 +175,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 
 	p.tagsCluster = make(map[int64]string)
 	var data []*models.BzAlertProbe
-	if err := p.engine.Where("`name` = ? and `type` = ?", p.cfg.ProbeName, p.cfg.Type).Find(&data); err != nil {
+	if err := p.engine.Where("`type` = ?", p.cfg.Type).Find(&data); err != nil {
 		return nil, err
 	}
 
@@ -187,7 +187,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 		gLabels := model.LabelSet{}
 
 		// labels
-		if probe.Labels != "" {
+		if probe.AddLabels && probe.Labels != "" {
 			var ls model.LabelSet
 			err := json.Unmarshal([]byte(probe.Labels), &ls)
 			if err != nil {
