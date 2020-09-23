@@ -133,7 +133,7 @@ type BlackboxDiscovery struct {
 	cfg    *BlackboxSDConfig
 	logger log.Logger
 
-	tagsData    map[int64]model.LabelSet
+	tagsCluster map[int64]string
 	lastRefresh map[string]int
 }
 
@@ -154,10 +154,10 @@ func NewBlackboxDiscovery(cfg *BlackboxSDConfig, dbConfig *DBConfig, l log.Logge
 	}
 
 	d := &BlackboxDiscovery{
-		cfg:      cfg,
-		logger:   l,
-		engine:   engines[txorm.DefaultDatabase],
-		tagsData: make(map[int64]model.LabelSet),
+		cfg:         cfg,
+		logger:      l,
+		engine:      engines[txorm.DefaultDatabase],
+		tagsCluster: make(map[int64]string),
 	}
 
 	d.Discovery = refresh.NewDiscovery(
@@ -173,7 +173,7 @@ func NewBlackboxDiscovery(cfg *BlackboxSDConfig, dbConfig *DBConfig, l log.Logge
 func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	defer level.Debug(p.logger).Log("msg", "bdp blackbox mysql discovery completed", "context", ctx)
 
-	p.tagsData = make(map[int64]model.LabelSet)
+	p.tagsCluster = make(map[int64]string)
 	var data []*models.BzAlertProbe
 	if err := p.engine.Where("`name` = ? and `type` = ?", p.cfg.ProbeName, p.cfg.Type).Find(&data); err != nil {
 		return nil, err
@@ -185,11 +185,9 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 	for _, probe := range data {
 		instances := strings.Split(probe.Instances, ",")
 		gLabels := model.LabelSet{}
-		if probe.AddServiceId {
-			gLabels["serviceId"] = model.LabelValue(probe.ServiceId)
-		}
 
-		if probe.AddLabels && probe.Labels != "" {
+		// labels
+		if probe.Labels != "" {
 			var ls model.LabelSet
 			err := json.Unmarshal([]byte(probe.Labels), &ls)
 			if err != nil {
@@ -201,18 +199,35 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 			}
 		}
 
+		// tags
+		if probe.Tags != "" {
+			var ts model.LabelSet
+			err := json.Unmarshal([]byte(probe.Tags), &ts)
+			if err != nil {
+				level.Debug(p.logger).Log("msg", "Unmarshal err", "err", err.Error(), "tags", probe.Tags)
+				continue
+			}
+			for label, value := range ts {
+				gLabels[label] = value
+			}
+		}
+
 		mGroups := map[string]*targetgroup.Group{}
 		for _, instance := range instances {
 			if len(instance) == 0 {
 				continue
 			}
-			tagKey := ""
+			tagKey := "_"
+			cluster := ""
 			tags := model.LabelSet{}
-			if probe.AddTags {
+			if probe.Tags != "" {
 				arr := strings.Split(instance, ":")
 				sIp := arr[0]
-				tags = p.getTagsByIp(sIp)
-				tagKey = util.Md5(tags.String())
+				cluster = p.getClusterByIp(sIp)
+				if cluster != "" {
+					tagKey = cluster
+					tags = model.LabelSet{"cluster": model.LabelValue(cluster)}
+				}
 			}
 			if probe.Type == "http" {
 				instance = fmt.Sprintf("http://%s", instance)
@@ -220,7 +235,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 			if _, ok := mGroups[tagKey]; ok {
 				mGroups[tagKey].Targets = append(mGroups[tagKey].Targets, model.LabelSet{model.AddressLabel: model.LabelValue(instance)})
 			} else {
-				source := fmt.Sprintf("%s_%s", probe.Id, tagKey)
+				source := fmt.Sprintf("%s.%s", probe.Id, tagKey)
 				curRefresh[source] = 1
 				g := targetgroup.Group{
 					Targets: []model.LabelSet{{model.AddressLabel: model.LabelValue(instance)}},
@@ -254,26 +269,27 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 	return result, nil
 }
 
-// getTagsByIp 根据IP获取tags
-func (p *BlackboxDiscovery) getTagsByIp(sIp string) model.LabelSet {
+// getClusterByIp 根据IP获取cluster
+func (p *BlackboxDiscovery) getClusterByIp(sIp string) string {
 	ipNum := util.IpAtoi(sIp)
-	if tags, ok := p.tagsData[ipNum]; ok {
-		return tags
+	if cluster, ok := p.tagsCluster[ipNum]; ok {
+		return cluster
 	}
 
-	tags := model.LabelSet{}
 	var data []*models.BzOpsIps
-	if err := p.engine.Where("`ip_num` = ? and (`tag_key` = ? or `tag_key` = ? or `tag_key` = ?)", ipNum, "cluster", "deploymentServices", "product").Find(&data); err != nil {
+	if err := p.engine.Where("`ip_num` = ? and `tag_key` = 'cluster'", ipNum).Limit(1).Find(&data); err != nil {
 		level.Error(p.logger).Log("msg", "get bz_ops_ips data err", "err", err.Error())
-		return tags
+		return ""
 	} else if len(data) == 0 {
-		return tags
+		return ""
 	}
 
+	cluster := ""
 	for _, v := range data {
-		tags[model.LabelName(v.TagKey)] = model.LabelValue(v.TagValue)
+		cluster = v.TagValue
+		break
 	}
-	p.tagsData[ipNum] = tags
+	p.tagsCluster[ipNum] = cluster
 
-	return tags
+	return cluster
 }
