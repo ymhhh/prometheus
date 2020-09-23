@@ -325,6 +325,6 @@ func IpAtoi(sIp string) int64 {
 //     md5后的结果
 func Md5(s string) string {
 	h := md5.New()
-	h.Write([]byte(s))
+	_, _ = h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
 }

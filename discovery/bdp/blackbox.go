@@ -236,7 +236,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 	}
 
 	// 清除老的target
-	for k, _ := range p.lastRefresh {
+	for k := range p.lastRefresh {
 		if _, ok := curRefresh[k]; ok {
 			continue
 		}
@@ -249,7 +249,7 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 		result = append(result, &g)
 	}
 	p.lastRefresh = curRefresh
-	
+
 	return result, nil
 }
 
