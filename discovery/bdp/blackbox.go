@@ -207,9 +207,8 @@ func (p *BlackboxDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 				level.Debug(p.logger).Log("msg", "Unmarshal err", "err", err.Error(), "tags", probe.Tags)
 				continue
 			}
-			for label, value := range ts {
-				gLabels[label] = value
-			}
+			gLabels["product"] = ts["product"]
+			gLabels["deploymentServices"] = ts["deploymentServices"]
 		}
 
 		mGroups := map[string]*targetgroup.Group{}
