@@ -117,7 +117,10 @@ func newKaScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, jitterSee
 		totalCnt:   0,
 		addedCnt:   0,
 		seriesCnt:  0,
-		ca:         newScrapeCache(true, isTsdb),
+	}
+
+	if sp.config.SingleCache {
+		sp.ca = newScrapeCache(true, isTsdb)
 	}
 
 	// kafka config
@@ -175,14 +178,19 @@ func (sp *kaScrapePool) run(t *Target) {
 		return mutateReportSampleLabels(l, opts.target)
 	}
 	sl := &scrapeLoop{
-		scraper:             &targetScraper{Target: t},
-		buffers:             nil,
-		cache:               sp.ca,
+		scraper: &targetScraper{Target: t},
+		buffers: nil,
+		//cache:               sp.ca,
 		appender:            app,
 		sampleMutator:       sm,
 		reportSampleMutator: rsm,
 		l:                   sp.logger,
 		honorTimestamps:     sp.config.HonorTimestamps,
+	}
+	if sp.config.SingleCache {
+		sl.cache = sp.ca
+	} else {
+		sl.cache = newScrapeCache(false, false)
 	}
 
 LOOP:

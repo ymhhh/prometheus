@@ -450,6 +450,7 @@ type ScrapeConfig struct {
 	MaxGoNum             int               `yaml:"max_go_num,omitempty"`
 	RecvGoNum            int               `yaml:"recv_go_num,omitempty"`
 	MsgChanLen           int               `yaml:"msg_chan_len,omitempty"`
+	SingleCache          bool              `yaml:"single_cache,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
