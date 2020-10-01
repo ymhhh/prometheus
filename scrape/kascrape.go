@@ -236,28 +236,35 @@ func (sp *kaScrapePool) stop() {
 // recv recv message from kafka
 func (sp *kaScrapePool) recv(num int) {
 	level.Info(sp.logger).Log("msg", "recv message start...", "num", num)
-	client, err := sp.getKaConn()
-	if err != nil {
-		level.Error(sp.logger).Log("msg", "recv message get connect err", "num", num, "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
-		panic("get kafka connect err")
-	}
-	level.Info(sp.logger).Log("msg", "recv message get connect success...", "num", num)
 
-	consumer := newKaHandler(sp.message, sp.logger)
+LOOP:
 	for {
-		level.Info(sp.logger).Log("msg", "recv message ready...", "num", num)
-		err = client.Consume(sp.kaCtx, strings.Split(sp.config.KaConfig.KaTopic, ","), consumer)
+		client, err := sp.getKaConn()
 		if err != nil {
-			level.Error(sp.logger).Log("msg", "recv kafka message err", "num", num, "err", err.Error())
-			panic("recv kafka message err")
+			level.Error(sp.logger).Log("msg", "recv message get connect err", "num", num, "err", err.Error(), "topic", sp.config.KaConfig.KaTopic)
+			<-time.After(5 * time.Second)
+			continue LOOP
 		}
-		// check if context was cancelled, signaling that the consumer should stop
-		if sp.kaCtx.Err() != nil {
-			level.Info(sp.logger).Log("msg", "recv kafka message is cancelled", "num", num)
-			break
+		level.Info(sp.logger).Log("msg", "recv message get connect success...", "num", num)
+
+		consumer := newKaHandler(sp.message, sp.logger)
+		for {
+			level.Info(sp.logger).Log("msg", "recv message ready...", "num", num)
+			err = client.Consume(sp.kaCtx, strings.Split(sp.config.KaConfig.KaTopic, ","), consumer)
+			if err != nil {
+				level.Error(sp.logger).Log("msg", "recv kafka message err", "num", num, "err", err.Error())
+				client.Close()
+				<-time.After(1 * time.Second)
+				continue LOOP
+			}
+			// check if context was cancelled, signaling that the consumer should stop
+			if sp.kaCtx.Err() != nil {
+				level.Info(sp.logger).Log("msg", "recv kafka message is cancelled", "num", num)
+				client.Close()
+				break LOOP
+			}
 		}
 	}
-	client.Close()
 
 	level.Info(sp.logger).Log("msg", "recv message end...", "num", num)
 }
