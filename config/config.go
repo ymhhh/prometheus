@@ -153,6 +153,7 @@ type Config struct {
 	ScrapeConfigs   []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
 	KaScrapeConfigs []*ScrapeConfig `yaml:"kascrape_configs,omitempty"`
 	OtsdbConfigs    OtsdbConfig     `yaml:"otsdb_configs,omitempty"`
+	ReloadConfig    ReloadConfig    `yaml:"reload_config,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
@@ -545,6 +546,11 @@ func (c *OtsdbConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return nil
+}
+
+// ReloadConfig reload configuration.
+type ReloadConfig struct {
+	Ticker model.Duration `yaml:"ticker,omitempty"` // 自动reload时间间隔
 }
 
 // AlertingConfig configures alerting and alertmanager related configs.

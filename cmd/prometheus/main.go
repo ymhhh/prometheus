@@ -60,6 +60,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	prom_runtime "github.com/prometheus/prometheus/pkg/runtime"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/reload"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
@@ -412,6 +413,7 @@ func main() {
 		kaScrapeManager = scrape.NewKaManager(log.With(logger, "component", "kafka scrape manager"), fanoutStorage, cfg.storageRemoteTsdb)
 
 		senderManager = otsdb.NewSenderManager(log.With(logger, "component", "sender manager"), cfg.web.ListenAddress)
+		reloadManager = reload.NewReload(log.With(logger, "component", "reload"))
 
 		opts = promql.EngineOpts{
 			Logger:             log.With(logger, "component", "query engine"),
@@ -482,6 +484,31 @@ func main() {
 	)
 
 	var reloaders []func(cfg *config.Config) error
+	alertApplyConfigFunc := func(cfg *config.Config) error {
+		c := make(map[string]sd_config.ServiceDiscoveryConfig)
+		for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
+			c[k] = v.ServiceDiscoveryConfig
+		}
+		return discoveryManagerNotify.ApplyConfig(c)
+	}
+	ruleApplyConfigFunc := func(cfg *config.Config) error {
+		// Get all rule files matching the configuration paths.
+		var files []string
+		for _, pat := range cfg.RuleFiles {
+			fs, err := filepath.Glob(pat)
+			if err != nil {
+				// The only error can be a bad pattern.
+				return errors.Wrapf(err, "error retrieving rule files for %s", pat)
+			}
+			files = append(files, fs...)
+		}
+		return ruleManager.Update(
+			time.Duration(cfg.GlobalConfig.EvaluationInterval),
+			files,
+			cfg.RuleMysql.DBConfig,
+			cfg.GlobalConfig.ExternalLabels,
+		)
+	}
 
 	switch cfg.role {
 	case roleAlert:
@@ -519,32 +546,10 @@ func main() {
 				return discoveryKaManagerScrape.ApplyConfig(c)
 			},
 			notifierManager.ApplyConfig,
-			func(cfg *config.Config) error {
-				c := make(map[string]sd_config.ServiceDiscoveryConfig)
-				for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
-					c[k] = v.ServiceDiscoveryConfig
-				}
-				return discoveryManagerNotify.ApplyConfig(c)
-			},
-			func(cfg *config.Config) error {
-				// Get all rule files matching the configuration paths.
-				var files []string
-				for _, pat := range cfg.RuleFiles {
-					fs, err := filepath.Glob(pat)
-					if err != nil {
-						// The only error can be a bad pattern.
-						return errors.Wrapf(err, "error retrieving rule files for %s", pat)
-					}
-					files = append(files, fs...)
-				}
-				return ruleManager.Update(
-					time.Duration(cfg.GlobalConfig.EvaluationInterval),
-					files,
-					cfg.RuleMysql.DBConfig,
-					cfg.GlobalConfig.ExternalLabels,
-				)
-			},
+			alertApplyConfigFunc,
+			ruleApplyConfigFunc,
 			senderManager.ApplyConfig,
+			reloadManager.ApplyConfig,
 		}
 	default:
 		reloaders = []func(cfg *config.Config) error{
@@ -583,32 +588,10 @@ func main() {
 				return discoveryKaManagerScrape.ApplyConfig(c)
 			},
 			notifierManager.ApplyConfig,
-			func(cfg *config.Config) error {
-				c := make(map[string]sd_config.ServiceDiscoveryConfig)
-				for k, v := range cfg.AlertingConfig.AlertmanagerConfigs.ToMap() {
-					c[k] = v.ServiceDiscoveryConfig
-				}
-				return discoveryManagerNotify.ApplyConfig(c)
-			},
-			func(cfg *config.Config) error {
-				// Get all rule files matching the configuration paths.
-				var files []string
-				for _, pat := range cfg.RuleFiles {
-					fs, err := filepath.Glob(pat)
-					if err != nil {
-						// The only error can be a bad pattern.
-						return errors.Wrapf(err, "error retrieving rule files for %s", pat)
-					}
-					files = append(files, fs...)
-				}
-				return ruleManager.Update(
-					time.Duration(cfg.GlobalConfig.EvaluationInterval),
-					files,
-					cfg.RuleMysql.DBConfig,
-					cfg.GlobalConfig.ExternalLabels,
-				)
-			},
+			alertApplyConfigFunc,
+			ruleApplyConfigFunc,
 			senderManager.ApplyConfig,
+			reloadManager.ApplyConfig,
 		}
 	}
 
@@ -936,6 +919,37 @@ func main() {
 			},
 			func(err error) {
 				notifierManager.Stop()
+			},
+		)
+	}
+	{
+		// reload config manager.
+		autoReload := []func(cfg *config.Config) error{
+			alertApplyConfigFunc,
+			ruleApplyConfigFunc,
+		}
+		cancel := make(chan struct{})
+
+		g.Add(
+			func() error {
+				<-reloadReady.C
+
+				go reloadManager.Run()
+				for {
+					select {
+					case <-reloadManager.Reload():
+						if err := reloadConfig(cfg.configFile, logger, autoReload...); err != nil {
+							level.Error(logger).Log("msg", "Error reloading config", "err", err)
+						}
+					case <-cancel:
+						return nil
+					}
+				}
+
+			},
+			func(err error) {
+				reloadManager.Stop()
+				close(cancel)
 			},
 		)
 	}
