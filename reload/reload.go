@@ -83,6 +83,10 @@ func (m *Reload) Run() error {
 	level.Debug(m.logger).Log("msg", "reload run start...")
 	reloader := func() {
 		m.mtx.Lock()
+		if m.reloadConf == nil {
+			m.mtx.Unlock()
+			return
+		}
 		tk := m.reloadConf.Ticker
 		m.mtx.Unlock()
 		if tk > 0 {

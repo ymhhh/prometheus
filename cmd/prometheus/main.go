@@ -792,6 +792,37 @@ func main() {
 		)
 	}
 	{
+		// reload config manager.
+		autoReload := []func(cfg *config.Config) error{
+			alertApplyConfigFunc,
+			ruleApplyConfigFunc,
+		}
+		cancel := make(chan struct{})
+
+		g.Add(
+			func() error {
+				<-reloadReady.C
+
+				go reloadManager.Run()
+				for {
+					select {
+					case <-reloadManager.Reload():
+						if err := reloadConfig(cfg.configFile, logger, autoReload...); err != nil {
+							level.Error(logger).Log("msg", "Error reloading config", "err", err)
+						}
+					case <-cancel:
+						return nil
+					}
+				}
+
+			},
+			func(err error) {
+				reloadManager.Stop()
+				close(cancel)
+			},
+		)
+	}
+	{
 		// Initial configuration loading.
 		cancel := make(chan struct{})
 		g.Add(
@@ -919,37 +950,6 @@ func main() {
 			},
 			func(err error) {
 				notifierManager.Stop()
-			},
-		)
-	}
-	{
-		// reload config manager.
-		autoReload := []func(cfg *config.Config) error{
-			alertApplyConfigFunc,
-			ruleApplyConfigFunc,
-		}
-		cancel := make(chan struct{})
-
-		g.Add(
-			func() error {
-				<-reloadReady.C
-
-				go reloadManager.Run()
-				for {
-					select {
-					case <-reloadManager.Reload():
-						if err := reloadConfig(cfg.configFile, logger, autoReload...); err != nil {
-							level.Error(logger).Log("msg", "Error reloading config", "err", err)
-						}
-					case <-cancel:
-						return nil
-					}
-				}
-
-			},
-			func(err error) {
-				reloadManager.Stop()
-				close(cancel)
 			},
 		)
 	}
