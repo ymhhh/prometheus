@@ -70,6 +70,7 @@ type config struct {
 	telnet                  bool
 	maxConns                int
 	maxIdle                 int
+	retryTimes              int
 }
 
 var (
@@ -184,6 +185,8 @@ func parseFlags() *config {
 		Default("200").IntVar(&cfg.maxConns)
 	a.Flag("max-idle", "The maximum number of idle connections.(default: 200)").
 		Default("200").IntVar(&cfg.maxIdle)
+	a.Flag("retry-times", "Retry to get metric data when it called failure.(default: 0, no retry)").
+		Default("0").IntVar(&cfg.retryTimes)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 	a.Version(version.Print("Remote storage adapter"))
@@ -232,6 +235,7 @@ func buildClients(logger log.Logger, cfg *config) ([]writer, []reader) {
 			false,
 			cfg.maxConns,
 			cfg.maxIdle,
+			cfg.retryTimes,
 		)
 		writers = append(writers, c)
 		readers = append(readers, c)
