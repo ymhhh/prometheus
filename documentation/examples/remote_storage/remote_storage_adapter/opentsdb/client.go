@@ -306,18 +306,17 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			default:
 			}
 
-			rawBytes, err := json.Marshal(queryReq)
-			if err != nil {
-				level.Error(c.logger).Log("msg", "marshal error", "err", err.Error(), "url", c.readUrl)
-				errCh <- err
-				return
-			}
-			retryTimes, retry := 0, false
+			var (
+				err        error
+				rawBytes   []byte
+				retryTimes int
+				retry      bool
+			)
 			for retryTimes <= c.retryTimes {
 				retryTimes++
-				rawBytes, retry, err = c.retryRead(ctx, rawBytes)
+				rawBytes, retry, err = c.retryRead(ctx, queryReq)
 				// 需要重试则轮训下一次
-				if err != nil && retry {
+				if err != nil && err.Error() != context.DeadlineExceeded.Error() && retry {
 					continue
 				}
 				// 不需要错误重试或者成功请求，直接跳出
@@ -412,7 +411,14 @@ loop:
 	return &resp, nil
 }
 
-func (c *Client) retryRead(ctx context.Context, reqBytes []byte) ([]byte, bool, error) {
+func (c *Client) retryRead(ctx context.Context, queryReq *otdbQueryReq) ([]byte, bool, error) {
+
+	reqBytes, err := json.Marshal(queryReq)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "marshal error", "err", err.Error(), "url", c.readUrl)
+		return nil, false, err
+	}
+
 	req, err := http.NewRequest("POST", c.readUrl, bytes.NewBuffer(reqBytes))
 	if err != nil {
 		level.Error(c.logger).Log("msg", "new request error", "err", err.Error(), "url", c.readUrl)
@@ -423,9 +429,6 @@ func (c *Client) retryRead(ctx context.Context, reqBytes []byte) ([]byte, bool, 
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "body", string(reqBytes), "url", c.readUrl)
-		if err.Error() == context.DeadlineExceeded.Error() {
-			return nil, false, err
-		}
 		return nil, true, err
 	}
 	defer func() {
