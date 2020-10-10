@@ -15,17 +15,17 @@ package otsdb
 
 import (
 	"errors"
-	influx "github.com/influxdata/influxdb/client/v2"
-	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/influxdb"
-	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/opentsdb"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
+	influx "github.com/influxdata/influxdb/client/v2"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/influxdb"
+	"github.com/prometheus/prometheus/documentation/examples/remote_storage/remote_storage_adapter/opentsdb"
+
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/util"
 )
@@ -86,7 +86,7 @@ func (m *SenderManager) ApplyConfig(cfg *config.Config) error {
 		// 默认opentsdb
 		m.otsdbCli = opentsdb.NewClient(m.logger, m.otsdbConf.TsdbAddr, "", time.Duration(m.otsdbConf.IdleTimeout),
 			time.Duration(m.otsdbConf.ConnTimeout), time.Duration(m.otsdbConf.WriteTimeout),
-			false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle)
+			false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle, 0)
 	}
 
 	m.sr = newSenderReport(m.logger, m.otsdbConf, m.addr)
