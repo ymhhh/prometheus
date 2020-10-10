@@ -62,10 +62,12 @@ type Client struct {
 	maxIdle       int
 	wait          bool
 	telnetPool    *TelnetPool
+	retryTimes    int
 }
 
 // NewClient creates a new Client.
-func NewClient(logger log.Logger, openWUrl, openRUrl string, idleTimeout, connTimeout, remoteTimeout time.Duration, isRe, isTelnet, wait bool, maxConns, maxIdle int) *Client {
+func NewClient(logger log.Logger, openWUrl, openRUrl string, idleTimeout, connTimeout, remoteTimeout time.Duration,
+	isRe, isTelnet, wait bool, maxConns, maxIdle, retryTimes int) *Client {
 	if maxConns <= 0 {
 		maxConns = 200
 	}
@@ -122,6 +124,11 @@ func NewClient(logger log.Logger, openWUrl, openRUrl string, idleTimeout, connTi
 
 	if c.isTelnet {
 		c.telnetPool = NewTelnetPool(c.logger, openWUrl, c.maxConns, c.maxIdle, c.idleTimeout, c.connTimeout, c.remoteTimeout, c.wait)
+	}
+
+	c.retryTimes = retryTimes
+	if c.retryTimes < 0 {
+		c.retryTimes = 0
 	}
 
 	return &c
@@ -305,39 +312,56 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 				errCh <- err
 				return
 			}
-
-			req, err := http.NewRequest("POST", c.readUrl, bytes.NewBuffer(rawBytes))
+			retryTimes, retry := 0, false
+			for retryTimes <= c.retryTimes {
+				retryTimes++
+				rawBytes, retry, err = c.retryRead(ctx, rawBytes)
+				if err != nil {
+					// 需要重试则轮训下一次
+					if retry {
+						continue
+					}
+				}
+				// 不需要错误重试或者成功请求，直接跳出
+				break
+			}
 			if err != nil {
-				level.Error(c.logger).Log("msg", "new request error", "err", err.Error(), "url", c.readUrl)
 				errCh <- err
 				return
 			}
-			req.Header.Set("Content-Type", contentTypeJSON)
 
-			resp, err := http.DefaultClient.Do(req.WithContext(ctx))
-			if err != nil {
-				level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "url", c.readUrl)
-				errCh <- err
-				return
-			}
+			// req, err := http.NewRequest("POST", c.readUrl, bytes.NewBuffer(rawBytes))
+			// if err != nil {
+			// 	level.Error(c.logger).Log("msg", "new request error", "err", err.Error(), "url", c.readUrl)
+			// 	errCh <- err
+			// 	return
+			// }
+			// req.Header.Set("Content-Type", contentTypeJSON)
 
-			defer func() {
-				io.Copy(ioutil.Discard, resp.Body)
-				resp.Body.Close()
-			}()
+			// resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+			// if err != nil {
+			// 	level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "url", c.readUrl)
+			// 	errCh <- err
+			// 	return
+			// }
 
-			if resp.StatusCode != http.StatusOK {
-				level.Error(c.logger).Log("msg", "query opentsdb error", "err", string(rawBytes), "http_code", resp.StatusCode, "url", c.readUrl)
-				errCh <- fmt.Errorf("got status code %v", resp.StatusCode)
-				return
-			}
+			// defer func() {
+			// 	io.Copy(ioutil.Discard, resp.Body)
+			// 	resp.Body.Close()
+			// }()
 
-			rawBytes, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				level.Error(c.logger).Log("msg", "read all error", "err", err.Error(), "url", c.readUrl)
-				errCh <- err
-				return
-			}
+			// if resp.StatusCode != http.StatusOK {
+			// 	level.Error(c.logger).Log("msg", "query opentsdb error", "err", string(rawBytes), "http_code", resp.StatusCode, "url", c.readUrl)
+			// 	errCh <- fmt.Errorf("got status code %v", resp.StatusCode)
+			// 	return
+			// }
+
+			// rawBytes, err = ioutil.ReadAll(resp.Body)
+			// if err != nil {
+			// 	level.Error(c.logger).Log("msg", "read all error", "err", err.Error(), "url", c.readUrl)
+			// 	errCh <- err
+			// 	return
+			// }
 
 			var res otdbQueryResSet
 
@@ -388,6 +412,39 @@ loop:
 		resp.Results[0].Timeseries = append(resp.Results[0].Timeseries, ts)
 	}
 	return &resp, nil
+}
+
+func (c *Client) retryRead(ctx context.Context, reqBytes []byte) ([]byte, bool, error) {
+	req, err := http.NewRequest("POST", c.readUrl, bytes.NewBuffer(reqBytes))
+	if err != nil {
+		level.Error(c.logger).Log("msg", "new request error", "err", err.Error(), "url", c.readUrl)
+		return nil, false, err
+	}
+	req.Header.Set("Content-Type", contentTypeJSON)
+
+	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	if err != nil {
+		level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "url", c.readUrl)
+		return nil, true, err
+	}
+	defer func() {
+		io.Copy(ioutil.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("got status code %v", resp.StatusCode)
+		if resp.StatusCode == http.StatusFailedDependency {
+			return nil, true, err
+		}
+		level.Error(c.logger).Log("msg", "query opentsdb error", "err", string(reqBytes), "http_code", resp.StatusCode, "url", c.readUrl)
+		return nil, false, fmt.Errorf("got status code %v", resp.StatusCode)
+	}
+	rawBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "read all error", "err", err.Error(), "url", c.readUrl)
+		return nil, false, err
+	}
+	return rawBytes, false, nil
 }
 
 func (c *Client) buildQueryReq(q *prompb.Query, isRe bool) (*otdbQueryReq, seriesMatcher, error) {
