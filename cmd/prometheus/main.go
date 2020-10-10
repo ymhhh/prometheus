@@ -803,7 +803,7 @@ func main() {
 			func() error {
 				<-reloadReady.C
 
-				go reloadManager.Run()
+				go func() { _ = reloadManager.Run() }()
 				for {
 					select {
 					case <-reloadManager.Reload():
@@ -814,7 +814,6 @@ func main() {
 						return nil
 					}
 				}
-
 			},
 			func(err error) {
 				reloadManager.Stop()
