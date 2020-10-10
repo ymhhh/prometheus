@@ -422,7 +422,10 @@ func (c *Client) retryRead(ctx context.Context, reqBytes []byte) ([]byte, bool, 
 
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
-		level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "url", c.readUrl)
+		level.Error(c.logger).Log("msg", "falied to send request to opentsdb", "err", err.Error(), "body", string(reqBytes), "url", c.readUrl)
+		if err.Error() == context.DeadlineExceeded.Error() {
+			return nil, false, err
+		}
 		return nil, true, err
 	}
 	defer func() {
