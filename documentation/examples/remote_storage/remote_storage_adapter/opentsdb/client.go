@@ -316,11 +316,9 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 			for retryTimes <= c.retryTimes {
 				retryTimes++
 				rawBytes, retry, err = c.retryRead(ctx, rawBytes)
-				if err != nil {
-					// 需要重试则轮训下一次
-					if retry {
-						continue
-					}
+				// 需要重试则轮训下一次
+				if err != nil && retry {
+					continue
 				}
 				// 不需要错误重试或者成功请求，直接跳出
 				break
