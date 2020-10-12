@@ -15,6 +15,7 @@ package rules
 
 import (
 	"context"
+	"fmt"
 	html_template "html/template"
 	"math"
 	"net/url"
@@ -176,6 +177,8 @@ func EngineQueryFunc(engine *promql.Engine, q storage.Queryable) QueryFunc {
 		res := q.Exec(ctx)
 		if res.Err != nil {
 			return nil, res.Err
+		} else if len(res.Warnings) != 0 && res.Value.String() == "" {
+			return nil, fmt.Errorf("%+v", res.Warnings)
 		}
 		switch v := res.Value.(type) {
 		case promql.Vector:
@@ -572,10 +575,11 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 
 			vector, err := rule.Eval(ctx, ts, g.opts.QueryFunc, g.opts.ExternalURL)
 			if err != nil {
+				level.Error(g.logger).Log("msg", "Evaluating rule failed", "rule", rule, "err", err)
 				// Canceled queries are intentional termination of queries. This normally
 				// happens on shutdown and thus we skip logging of any errors here.
 				if _, ok := err.(promql.ErrQueryCanceled); !ok {
-					level.Warn(g.logger).Log("msg", "Evaluating rule failed", "rule", rule, "err", err)
+					level.Warn(g.logger).Log("msg", "Evaluating rule failed by ErrQueryCanceled", "rule", rule, "err", err)
 				}
 				g.metrics.evalFailures.WithLabelValues(groupKey(g.File(), g.Name())).Inc()
 				return
