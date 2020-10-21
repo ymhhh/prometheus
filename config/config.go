@@ -799,6 +799,8 @@ type QueueConfig struct {
 
 	// Data Timeout (Unit:sec)
 	DataTimeout int64 `yaml:"data_timeout,omitempty"`
+	// Only write rules recording
+	OnlyRules bool `yaml:"only_rules,omitempty"`
 }
 
 // RemoteReadConfig is the configuration for reading from remote storage.
