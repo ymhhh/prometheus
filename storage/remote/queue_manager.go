@@ -17,6 +17,7 @@ import (
 	"context"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -317,6 +318,11 @@ outer:
 	for _, s := range samples {
 		t.seriesMtx.Lock()
 		lbls, ok := t.seriesLabels[s.Ref]
+		if t.cfg.OnlyRules && !strings.Contains(lbls.Get("__name__"), ":") {
+			t.seriesMtx.Unlock()
+			continue outer
+		}
+
 		if !ok {
 			t.metrics.droppedSamplesTotal.Inc()
 			t.samplesDropped.incr(1)
