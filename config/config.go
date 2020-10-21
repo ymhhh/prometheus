@@ -91,9 +91,9 @@ var (
 		HonorTimestamps: true,
 	}
 
-	// DefaultOtsdbConfig is the default otsdb configuration.
-	DefaultOtsdbConfig = OtsdbConfig{
-		TsdbName:     "opentsb",
+	// DefaultStorageConfigs is the default storage configuration.
+	DefaultStorageConfigs = StorageConfigs{
+		TsdbType:     "opentsb",
 		ConnTimeout:  model.Duration(3 * time.Second),
 		WriteTimeout: model.Duration(10 * time.Second),
 		MaxConns:     0,
@@ -101,9 +101,14 @@ var (
 		IdleTimeout:  0,
 		IsWait:       true,
 		IsTelnet:     false,
-		BatchNum:     1000,
-		MaxGoNum:     500,
 		Retention:    "autogen",
+		Headers:      make(map[string]string),
+	}
+
+	// DefaultOtsdbConfig is the default otsdb configuration.
+	DefaultOtsdbConfig = OtsdbConfig{
+		BatchNum: 1000,
+		MaxGoNum: 500,
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
@@ -511,9 +516,10 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// OtsdbConfig otsdb configuration.
-type OtsdbConfig struct {
+// StorageConfigs storage configuration.
+type StorageConfigs struct {
 	TsdbName     string         `yaml:"tsdb_name,omitempty"`     // tsdb名称
+	TsdbType     string         `yaml:"tsdb_type,omitempty"`     // tsdb类型
 	TsdbAddr     string         `yaml:"tsdb_addr,omitempty"`     // tsdb地址
 	ConnTimeout  model.Duration `yaml:"conn_timeout,omitempty"`  // 连接超时时间
 	WriteTimeout model.Duration `yaml:"write_timeout,omitempty"` // 写数据超时暗
@@ -522,15 +528,37 @@ type OtsdbConfig struct {
 	IdleTimeout  model.Duration `yaml:"idle_timeout,omitempty"`  // 空间连接时长
 	IsWait       bool           `yaml:"is_wait,omitempty"`       // 如果达到最大连接数，是否等待
 	IsTelnet     bool           `yaml:"is_telnet,omitempty"`     // 是否通过telnet访问tsdb,否则使用http访问
-	BatchNum     int            `yaml:"batch_num,omitempty"`     // 一次发送的samples数
-	BatchTimeout model.Duration `yaml:"batch_timeout,omitempty"` // 如果超过时间还没达到BatchNum数，就直接发送
-	MaxGoNum     int            `yaml:"max_go_num,omitempty"`    // 最大处理协程数
-	RecvGoNum    int            `yaml:"recv_go_num,omitempty"`   // 同时从channel里接收数据的协程数
-	ReportLabels model.LabelSet `yaml:"report_labels,omitempty"` // 上报数据添加的指标，如果serviceId
 	Database     string         `yaml:"database,omitempty"`      // 数据库名，influxdb配置项
 	UserName     string         `yaml:"username,omitempty"`      // 用户名，influxdb配置项
 	Password     string         `yaml:"password,omitempty"`      // 密码，influxdb配置项
 	Retention    string         `yaml:"retention,omitempty"`     // 保留策略，influxdb配置项
+
+	Headers map[string]string `yaml:"headers,omitempty"` // 添加的头信息
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *StorageConfigs) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultStorageConfigs
+	type plain StorageConfigs
+	err := unmarshal((*plain)(c))
+	if err != nil {
+		return err
+	}
+	if len(c.TsdbAddr) == 0 || len(c.TsdbName) == 0 {
+		return errors.New("TsdbAddr or TsdbName is empty")
+	}
+
+	return nil
+}
+
+// OtsdbConfig otsdb configuration.
+type OtsdbConfig struct {
+	StorageConfigs []*StorageConfigs `yaml:"storage_configs,omitempty"` // tsdb配置
+	BatchNum       int               `yaml:"batch_num,omitempty"`       // 一次发送的samples数
+	BatchTimeout   model.Duration    `yaml:"batch_timeout,omitempty"`   // 如果超过时间还没达到BatchNum数，就直接发送
+	MaxGoNum       int               `yaml:"max_go_num,omitempty"`      // 最大处理协程数
+	RecvGoNum      int               `yaml:"recv_go_num,omitempty"`     // 同时从channel里接收数据的协程数
+	ReportLabels   model.LabelSet    `yaml:"report_labels,omitempty"`   // 上报数据添加的指标，如果serviceId
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -540,9 +568,6 @@ func (c *OtsdbConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err := unmarshal((*plain)(c))
 	if err != nil {
 		return err
-	}
-	if len(c.TsdbAddr) == 0 {
-		return errors.New("tsdb_addr is empty")
 	}
 
 	return nil

@@ -29,7 +29,7 @@ import (
 type SenderPool struct {
 	logger    log.Logger
 	otsdbConf *config.OtsdbConfig
-	otsdbCli  tsdbWriter
+	otsdbCli  map[string]tsdbWriter
 	sr        *SenderReport
 
 	batchTimeout time.Duration
@@ -42,7 +42,7 @@ type SenderPool struct {
 }
 
 // newSenderPool 实例化SenderPool
-func newSenderPool(logger log.Logger, otsdbConf *config.OtsdbConfig, sr *SenderReport, otsdbCli tsdbWriter) *SenderPool {
+func newSenderPool(logger log.Logger, otsdbConf *config.OtsdbConfig, sr *SenderReport, otsdbCli map[string]tsdbWriter) *SenderPool {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -121,12 +121,13 @@ func (p *SenderPool) run() {
 		return
 	}
 
-	//ticker := time.NewTicker(p.batchTimeout)
-	//defer ticker.Stop()
+	ticker := time.NewTicker(p.batchTimeout)
+	defer ticker.Stop()
 
 	samples := make(model.Samples, p.otsdbConf.BatchNum)
 	pos := 0
 	isWait := true
+	lastTs := time.Now()
 
 LOOP:
 	for {
@@ -143,22 +144,21 @@ LOOP:
 			samples[pos] = s
 			pos++
 			if pos == p.otsdbConf.BatchNum {
-				//p.waitCond.Signal()
 				p.waitChan <- struct{}{}
 				isWait = true
 				p.send(samples, pos)
 				pos = 0
 				samples = make(model.Samples, p.otsdbConf.BatchNum)
+				lastTs = time.Now()
 			}
-		//case <-ticker.C:
-		//	//p.waitCond.Signal()
-		//	p.waitChan <- struct{}{}
-		//	isWait = true
-		//	if pos > 0 {
-		//		p.send(samples, pos)
-		//		pos = 0
-		//		samples = make(model.Samples, p.otsdbConf.BatchNum)
-		//	}
+		case <-ticker.C:
+			p.waitChan <- struct{}{}
+			isWait = true
+			if pos > 0 && time.Since(lastTs) > p.batchTimeout {
+				p.send(samples, pos)
+				pos = 0
+				samples = make(model.Samples, p.otsdbConf.BatchNum)
+			}
 		case <-p.graceShut:
 			if pos > 0 {
 				p.send(samples, pos)
@@ -184,10 +184,36 @@ func (p *SenderPool) send(samples model.Samples, pos int) {
 		return
 	}
 
-	// send tsdb
-	failedCnt, err := p.otsdbCli.Write(samples[:pos])
-	if err != nil {
-		level.Warn(p.logger).Log("msg", "Error sending samples to remote storage", "err", err, "num_samples", pos)
+	cliLen := len(p.otsdbCli)
+	if cliLen == 0 {
+		level.Error(p.logger).Log("msg", "otsdbCli is empty")
+		return
 	}
-	p.sr.addSendCnt(uint64(pos), uint64(failedCnt))
+
+	sendFunc := func(name string, cli tsdbWriter) {
+		failedCnt, err := cli.Write(samples[:pos])
+		if err != nil {
+			level.Warn(p.logger).Log("msg", "Error sending samples to remote storage", "err", err, "num_samples", pos)
+		}
+		p.sr.addSendCnt(name, uint64(pos), uint64(failedCnt))
+	}
+
+	// send tsdb
+	wg := sync.WaitGroup{}
+	for otsdbName, otsdbCli := range p.otsdbCli {
+		if cliLen == 1 {
+			sendFunc(otsdbName, otsdbCli)
+			return
+		}
+
+		wg.Add(1)
+		go func(name string, cli tsdbWriter) {
+			defer wg.Done()
+			sendFunc(name, cli)
+		}(otsdbName, otsdbCli)
+	}
+
+	if cliLen > 1 {
+		wg.Wait()
+	}
 }

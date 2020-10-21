@@ -46,7 +46,7 @@ type SenderManager struct {
 	logger    log.Logger
 	addr      string
 	otsdbConf *config.OtsdbConfig
-	otsdbCli  tsdbWriter
+	otsdbCli  map[string]tsdbWriter
 	mtxOtsdb  sync.Mutex
 	sp        *SenderPool
 	sr        *SenderReport
@@ -72,21 +72,32 @@ func (m *SenderManager) ApplyConfig(cfg *config.Config) error {
 	m.mtxOtsdb.Lock()
 	defer m.mtxOtsdb.Unlock()
 
+	// 暂时不支持reload
+	if m.otsdbCli != nil {
+		return nil
+	}
+
 	m.otsdbConf = &cfg.OtsdbConfigs
-	if m.otsdbConf.TsdbName == "influxdb" {
-		// influxdb
-		influxConf := influx.HTTPConfig{
-			Addr:     m.otsdbConf.TsdbAddr,
-			Username: m.otsdbConf.UserName,
-			Password: m.otsdbConf.Password,
-			Timeout:  time.Duration(m.otsdbConf.WriteTimeout),
+	m.otsdbCli = make(map[string]tsdbWriter)
+	for _, storageCfg := range cfg.OtsdbConfigs.StorageConfigs {
+		if storageCfg.TsdbType == "influxdb" {
+			// influxdb
+			influxConf := influx.HTTPConfig{
+				Addr:     storageCfg.TsdbAddr,
+				Username: storageCfg.UserName,
+				Password: storageCfg.Password,
+				Timeout:  time.Duration(storageCfg.WriteTimeout),
+			}
+			m.otsdbCli[storageCfg.TsdbName] = influxdb.NewClient(m.logger, influxConf, storageCfg.Database, storageCfg.Retention)
+		} else if storageCfg.TsdbType == "remote" {
+			// remote
+			m.otsdbCli[storageCfg.TsdbName] = NewRemoteClient(m.logger, storageCfg.TsdbAddr, time.Duration(storageCfg.WriteTimeout), storageCfg.Headers)
+		} else {
+			// 默认opentsdb
+			m.otsdbCli[storageCfg.TsdbName] = opentsdb.NewClient(m.logger, storageCfg.TsdbAddr, "", time.Duration(storageCfg.IdleTimeout),
+				time.Duration(storageCfg.ConnTimeout), time.Duration(storageCfg.WriteTimeout),
+				false, storageCfg.IsTelnet, storageCfg.IsWait, storageCfg.MaxConns, storageCfg.MaxIdle, 0)
 		}
-		m.otsdbCli = influxdb.NewClient(m.logger, influxConf, m.otsdbConf.Database, m.otsdbConf.Retention)
-	} else {
-		// 默认opentsdb
-		m.otsdbCli = opentsdb.NewClient(m.logger, m.otsdbConf.TsdbAddr, "", time.Duration(m.otsdbConf.IdleTimeout),
-			time.Duration(m.otsdbConf.ConnTimeout), time.Duration(m.otsdbConf.WriteTimeout),
-			false, m.otsdbConf.IsTelnet, m.otsdbConf.IsWait, m.otsdbConf.MaxConns, m.otsdbConf.MaxIdle, 0)
 	}
 
 	m.sr = newSenderReport(m.logger, m.otsdbConf, m.addr)
@@ -105,13 +116,16 @@ func (m *SenderManager) Run() error {
 		level.Error(m.logger).Log("msg", "otsdbConf is nil")
 		return errors.New("otsdbConf is nil")
 	}
+	for _, storageCfg := range m.otsdbConf.StorageConfigs {
+		level.Info(m.logger).Log("msg", "SenderManager run",
+			"TsdbName", storageCfg.TsdbName, "TsdbType", storageCfg.TsdbType, "TsdbAddr", storageCfg.TsdbAddr,
+			"ConnTimeout", storageCfg.ConnTimeout, "WriteTimeout", storageCfg.WriteTimeout,
+			"MaxConns", storageCfg.MaxConns, "MaxIdle", storageCfg.MaxIdle,
+			"IdleTimeout", storageCfg.IdleTimeout)
+	}
 	level.Info(m.logger).Log("msg", "SenderManager run",
-		"TsdbName", m.otsdbConf.TsdbName, "TsdbAddr", m.otsdbConf.TsdbAddr,
-		"ConnTimeout", m.otsdbConf.ConnTimeout, "WriteTimeout", m.otsdbConf.WriteTimeout,
-		"MaxConns", m.otsdbConf.MaxConns, "MaxIdle", m.otsdbConf.MaxIdle,
-		"IdleTimeout", m.otsdbConf.IdleTimeout, "BatchNum", m.otsdbConf.BatchNum,
-		"BatchTimeout", m.otsdbConf.BatchTimeout, "MaxGoNum", m.otsdbConf.MaxGoNum,
-		"RecvGoNum", m.otsdbConf.BatchTimeout)
+		"BatchNum", m.otsdbConf.BatchNum, "BatchTimeout", m.otsdbConf.BatchTimeout,
+		"MaxGoNum", m.otsdbConf.MaxGoNum, "RecvGoNum", m.otsdbConf.RecvGoNum)
 
 	go m.sr.run()
 	go m.sp.loop()
@@ -129,7 +143,9 @@ func (m *SenderManager) Stop() {
 		m.sp.stop()
 	}
 	if m.otsdbCli != nil {
-		m.otsdbCli.Destroy()
+		for _, cli := range m.otsdbCli {
+			cli.Destroy()
+		}
 	}
 	close(m.graceShut)
 }
@@ -140,7 +156,7 @@ type SenderReport struct {
 	graceShut chan struct{}
 	cntMtx    sync.Mutex
 	totalCnt  uint64
-	failedCnt uint64
+	failedCnt map[string]uint64
 	localIp   string
 	port      string
 }
@@ -164,7 +180,7 @@ func newSenderReport(logger log.Logger, otsdbConf *config.OtsdbConfig, addr stri
 		otsdbConf: otsdbConf,
 		graceShut: make(chan struct{}),
 		totalCnt:  0,
-		failedCnt: 0,
+		failedCnt: make(map[string]uint64),
 		localIp:   localIp,
 		port:      port,
 	}
@@ -199,11 +215,15 @@ func (r *SenderReport) stop() {
 }
 
 // addTotalCnt 添加sample发送数量
-func (r *SenderReport) addSendCnt(totalCnt, failedCnt uint64) {
+func (r *SenderReport) addSendCnt(tsdbName string, totalCnt, failedCnt uint64) {
 	r.cntMtx.Lock()
 	defer r.cntMtx.Unlock()
 	r.totalCnt += totalCnt
-	r.failedCnt += failedCnt
+	if _, ok := r.failedCnt[tsdbName]; !ok {
+		r.failedCnt[tsdbName] = failedCnt
+	} else {
+		r.failedCnt[tsdbName] += failedCnt
+	}
 }
 
 // report 统计发送数量
@@ -212,9 +232,8 @@ func (r *SenderReport) report() {
 	totalCnt := r.totalCnt
 	failedCnt := r.failedCnt
 	r.totalCnt = 0
-	r.failedCnt = 0
+	r.failedCnt = make(map[string]uint64)
 	r.cntMtx.Unlock()
-	level.Debug(r.logger).Log("msg", "send records", "dateCnt", time.Now().Format("200601021504"), "totalCnt", totalCnt, "succCnt", totalCnt-failedCnt, "failedCnt", failedCnt)
 	t := time.Now().Unix() * 1000
 
 	// sample总数
@@ -234,18 +253,22 @@ func (r *SenderReport) report() {
 	gOtsdbBuff <- &sTotal
 
 	// sample失败数
-	meFailed := model.Metric{
-		"__name__": model.LabelValue(storageSamplesFailed),
-		"instance": model.LabelValue(r.localIp),
-		"port":     model.LabelValue(r.port),
+	for tsdbName, cnt := range failedCnt {
+		level.Debug(r.logger).Log("msg", "send records", "dateCnt", time.Now().Format("200601021504"), "tsdbName", tsdbName, "totalCnt", totalCnt, "succCnt", totalCnt-cnt, "failedCnt", cnt)
+		meFailed := model.Metric{
+			"__name__":  model.LabelValue(storageSamplesFailed),
+			"instance":  model.LabelValue(r.localIp),
+			"port":      model.LabelValue(r.port),
+			"tsdb_name": model.LabelValue(tsdbName),
+		}
+		for k, v := range r.otsdbConf.ReportLabels {
+			meFailed[k] = v
+		}
+		sFailed := model.Sample{
+			Metric:    meFailed,
+			Value:     model.SampleValue(cnt),
+			Timestamp: model.Time(t),
+		}
+		gOtsdbBuff <- &sFailed
 	}
-	for k, v := range r.otsdbConf.ReportLabels {
-		meFailed[k] = v
-	}
-	sFailed := model.Sample{
-		Metric:    meFailed,
-		Value:     model.SampleValue(failedCnt),
-		Timestamp: model.Time(t),
-	}
-	gOtsdbBuff <- &sFailed
 }
