@@ -158,6 +158,16 @@ func (m *Manager) genAlertRules(
 		return nil, err
 	}
 
+	var monitorLabels []*models.BzMonitorLabels
+	if err := m.engine.Where("`monitor_id` = ?", monitor.Id).Find(&monitorLabels); err != nil {
+		return nil, err
+	}
+
+	var labelStrs []string
+	for _, label := range monitorLabels {
+		labelStrs = append(labelStrs, fmt.Sprintf("%s%s%q", label.Label, label.Operator, label.Value))
+	}
+
 	var exprStrs, thresholds []string
 	for _, thrd := range thrds {
 		exprStr := thrd.Metric
@@ -171,7 +181,6 @@ func (m *Manager) genAlertRules(
 				return nil, err
 			}
 
-			var labelStrs []string
 			if serviceID != "" {
 				labelStrs = append(labelStrs, fmt.Sprintf("serviceId=%q", serviceID))
 			}
