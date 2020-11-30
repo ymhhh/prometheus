@@ -168,7 +168,7 @@ func (m *Manager) genAlertRules(
 		labelStrs = append(labelStrs, fmt.Sprintf("%s%s%q", label.Label, label.Operator, label.Value))
 	}
 
-	var exprStrs, thresholds []string
+	var exprStrs, thresholds, operators []string
 	for _, thrd := range thrds {
 		exprStr := thrd.Metric
 		switch alert.ThresholdType {
@@ -228,6 +228,8 @@ func (m *Manager) genAlertRules(
 			thresholdStr = fmt.Sprintf("%f", thrd.Threshold)
 		}
 		exprStrs = append(exprStrs, exprStr)
+
+		operators = append(operators, thrd.Operator)
 		thresholds = append(thresholds, thresholdStr)
 	}
 
@@ -241,11 +243,19 @@ func (m *Manager) genAlertRules(
 
 	labelsMap := map[string]string{
 		"expression":   exprStr,
+		"monitor_id":   monitor.Id,
+		"monitor_name": monitor.Name,
 		"alert_id":     alert.Id,
 		"alert_name":   alert.Name,
 		"severity":     alert.Severity,
-		"monitor_name": monitor.Name,
 		"threshold":    strings.Join(thresholds, ";"),
+		"operator":     strings.Join(operators, ";"),
+	}
+
+	if alert.For == "" {
+		labelsMap["for"] = "0s"
+	} else {
+		labelsMap["for"] = alert.For
 	}
 
 	annotations := map[string]string{
