@@ -21,5 +21,6 @@ type BzService struct {
 	SystemId     string    `xorm:"VARCHAR(50)"`
 	ServiceId    string    `xorm:"VARCHAR(50)"`
 	FullPath     string    `xorm:"VARCHAR(100)"`
+	HasWhitelist bool      `xorm:"TINYINT(1)"`
 	Version      int       `xorm:"version"`
 }

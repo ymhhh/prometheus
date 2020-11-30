@@ -12,9 +12,9 @@ type BzAlertProbe struct {
 	Owner      string    `xorm:"TEXT"`
 	Members    string    `xorm:"TEXT"`
 	Labels     string    `xorm:"TEXT"`
-	Tags       string    `xorm:"TEXT"`
+	Tags       string    `xorm:"comment('用户定义标签') TEXT"`
 	Type       string    `xorm:"not null default 'http' VARCHAR(10)"`
-	AddLabels  bool      `xorm:"default '1' TINYINT(1)"`
+	AddLabels  bool      `xorm:"default 1 comment('是否将labels添加到标签 0-否 1-是') TINYINT(1)"`
 	CreatorErp string    `xorm:"VARCHAR(50)"`
 	UpdaterErp string    `xorm:"VARCHAR(50)"`
 	CreatedAt  time.Time `xorm:"DATETIME created"`
