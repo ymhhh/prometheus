@@ -61,7 +61,7 @@ func ChunkFromSamplesGeneric(s Samples) chunks.Meta {
 func PopulatedChunk(numSamples int, minTime int64) chunks.Meta {
 	samples := make([]Sample, numSamples)
 	for i := 0; i < numSamples; i++ {
-		samples[i] = sample{minTime + int64(i*1000), 1.0}
+		samples[i] = sample{minTime + int64(i*1000000), 1.0}
 	}
 	return ChunkFromSamples(samples)
 }

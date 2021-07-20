@@ -207,7 +207,7 @@ type EngineOpts struct {
 	LookbackDelta time.Duration
 
 	// NoStepSubqueryIntervalFn is the default evaluation interval of
-	// a subquery in milliseconds if no step in range vector was specified `[30m:<step>]`.
+	// a subquery in Microsecondsif no step in range vector was specified `[30m:<step>]`.
 	NoStepSubqueryIntervalFn func(rangeMillis int64) int64
 
 	// EnableAtModifier if true enables @ modifier. Disabled otherwise.
@@ -541,12 +541,12 @@ func (ng *Engine) exec(ctx context.Context, q *query) (v parser.Value, ws storag
 	panic(errors.Errorf("promql.Engine.exec: unhandled statement of type %T", q.Statement()))
 }
 
-func timeMilliseconds(t time.Time) int64 {
-	return t.UnixNano() / int64(time.Millisecond/time.Nanosecond)
+func timeMicroseconds(t time.Time) int64 {
+	return t.UnixNano() / int64(time.Microsecond/time.Nanosecond)
 }
 
-func durationMilliseconds(d time.Duration) int64 {
-	return int64(d / (time.Millisecond / time.Nanosecond))
+func durationMicroseconds(d time.Duration) int64 {
+	return int64(d / (time.Microsecond / time.Nanosecond))
 }
 
 // execEvalStmt evaluates the expression of an evaluation statement for the given time range.
@@ -565,11 +565,11 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 
 	// Modify the offset of vector and matrix selectors for the @ modifier
 	// w.r.t. the start time since only 1 evaluation will be done on them.
-	setOffsetForAtModifier(timeMilliseconds(s.Start), s.Expr)
+	setOffsetForAtModifier(timeMicroseconds(s.Start), s.Expr)
 	evalSpanTimer, ctxInnerEval := query.stats.GetSpanTimer(ctx, stats.InnerEvalTime, ng.metrics.queryInnerEval)
 	// Instant evaluation. This is executed as a range evaluation with one step.
 	if s.Start == s.End && s.Interval == 0 {
-		start := timeMilliseconds(s.Start)
+		start := timeMicroseconds(s.Start)
 		evaluator := &evaluator{
 			startTimestamp:           start,
 			endTimestamp:             start,
@@ -621,9 +621,9 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 
 	// Range evaluation.
 	evaluator := &evaluator{
-		startTimestamp:           timeMilliseconds(s.Start),
-		endTimestamp:             timeMilliseconds(s.End),
-		interval:                 durationMilliseconds(s.Interval),
+		startTimestamp:           timeMicroseconds(s.Start),
+		endTimestamp:             timeMicroseconds(s.End),
+		interval:                 durationMicroseconds(s.Interval),
 		ctx:                      ctxInnerEval,
 		maxSamples:               ng.maxSamplesPerQuery,
 		logger:                   ng.logger,
@@ -732,22 +732,22 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 		start = *n.Timestamp
 		end = *n.Timestamp
 	} else {
-		offsetMilliseconds := durationMilliseconds(subqOffset)
-		start = start - offsetMilliseconds - durationMilliseconds(subqRange)
-		end = end - offsetMilliseconds
+		offsetMicroseconds := durationMicroseconds(subqOffset)
+		start = start - offsetMicroseconds - durationMicroseconds(subqRange)
+		end = end - offsetMicroseconds
 	}
 
 	if evalRange == 0 {
-		start = start - durationMilliseconds(ng.lookbackDelta)
+		start = start - durationMicroseconds(ng.lookbackDelta)
 	} else {
 		// For all matrix queries we want to ensure that we have (end-start) + range selected
 		// this way we have `range` data before the start time
-		start = start - durationMilliseconds(evalRange)
+		start = start - durationMicroseconds(evalRange)
 	}
 
-	offsetMilliseconds := durationMilliseconds(n.OriginalOffset)
-	start = start - offsetMilliseconds
-	end = end - offsetMilliseconds
+	offsetMicroseconds := durationMicroseconds(n.OriginalOffset)
+	start = start - offsetMicroseconds
+	end = end - offsetMicroseconds
 
 	return start, end
 }
@@ -765,8 +765,8 @@ func (ng *Engine) populateSeries(querier storage.Querier, s *parser.EvalStmt) {
 			hints := &storage.SelectHints{
 				Start: start,
 				End:   end,
-				Step:  durationMilliseconds(s.Interval),
-				Range: durationMilliseconds(evalRange),
+				Step:  durationMicroseconds(s.Interval),
+				Range: durationMicroseconds(evalRange),
 				Func:  extractFuncFromPath(path),
 			}
 			evalRange = 0
@@ -851,9 +851,9 @@ func (e errWithWarnings) Error() string { return e.err.Error() }
 type evaluator struct {
 	ctx context.Context
 
-	startTimestamp int64 // Start time in milliseconds.
-	endTimestamp   int64 // End time in milliseconds.
-	interval       int64 // Interval in milliseconds.
+	startTimestamp int64 // Start time in microseconds.
+	endTimestamp   int64 // End time in microseconds.
+	interval       int64 // Interval in microseconds.
 
 	maxSamples               int
 	currentSamples           int
@@ -1145,7 +1145,7 @@ func (ev *evaluator) evalSubquery(subq *parser.SubqueryExpr) (*parser.MatrixSele
 	if subq.Timestamp != nil {
 		// The offset of subquery is not modified in case of @ modifier.
 		// Hence we take care of that here for the result.
-		vs.Offset = subq.OriginalOffset + time.Duration(ev.startTimestamp-*subq.Timestamp)*time.Millisecond
+		vs.Offset = subq.OriginalOffset + time.Duration(ev.startTimestamp-*subq.Timestamp)*time.Microsecond
 	}
 	ms := &parser.MatrixSelector{
 		Range:          subq.Range,
@@ -1213,7 +1213,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					if vs.Timestamp != nil {
 						// This is a special case only for "timestamp" since the offset
 						// needs to be adjusted for every point.
-						vs.Offset = time.Duration(enh.Ts-*vs.Timestamp) * time.Millisecond
+						vs.Offset = time.Duration(enh.Ts-*vs.Timestamp) * time.Microsecond
 					}
 					val, ws := ev.vectorSelector(vs, enh.Ts)
 					return call([]parser.Value{val}, e.Args, enh), ws
@@ -1281,8 +1281,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), warnings})
 		}
 		mat := make(Matrix, 0, len(selVS.Series)) // Output matrix.
-		offset := durationMilliseconds(selVS.Offset)
-		selRange := durationMilliseconds(sel.Range)
+		offset := durationMicroseconds(selVS.Offset)
+		selRange := durationMicroseconds(sel.Range)
 		stepRange := selRange
 		if stepRange > ev.interval {
 			stepRange = ev.interval
@@ -1336,7 +1336,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				if len(outVec) > 0 {
 					ss.Points = append(ss.Points, Point{V: outVec[0].Point.V, T: ts})
 				}
-				// Only buffer stepRange milliseconds from the second step on.
+				// Only buffer stepRange Microsecondsfrom the second step on.
 				it.ReduceDelta(stepRange)
 			}
 			if len(ss.Points) > 0 {
@@ -1469,7 +1469,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 		}
 		mat := make(Matrix, 0, len(e.Series))
-		it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
+		it := storage.NewMemoizedEmptyIterator(durationMicroseconds(ev.lookbackDelta))
 		for i, s := range e.Series {
 			it.Reset(s.Iterator())
 			ss := Series{
@@ -1504,8 +1504,8 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		return ev.matrixSelector(e)
 
 	case *parser.SubqueryExpr:
-		offsetMillis := durationMilliseconds(e.Offset)
-		rangeMillis := durationMilliseconds(e.Range)
+		offsetMillis := durationMicroseconds(e.Offset)
+		rangeMillis := durationMicroseconds(e.Range)
 		newEv := &evaluator{
 			endTimestamp:             ev.endTimestamp - offsetMillis,
 			ctx:                      ev.ctx,
@@ -1517,7 +1517,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		}
 
 		if e.Step != 0 {
-			newEv.interval = durationMilliseconds(e.Step)
+			newEv.interval = durationMicroseconds(e.Step)
 		} else {
 			newEv.interval = ev.noStepSubqueryIntervalFn(rangeMillis)
 		}
@@ -1600,7 +1600,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 	}
 	vec := make(Vector, 0, len(node.Series))
-	it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
+	it := storage.NewMemoizedEmptyIterator(durationMicroseconds(ev.lookbackDelta))
 	for i, s := range node.Series {
 		it.Reset(s.Iterator())
 
@@ -1623,7 +1623,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 
 // vectorSelectorSingle evaluates a instant vector for the iterator of one time series.
 func (ev *evaluator) vectorSelectorSingle(it *storage.MemoizedSeriesIterator, node *parser.VectorSelector, ts int64) (int64, float64, bool) {
-	refTime := ts - durationMilliseconds(node.Offset)
+	refTime := ts - durationMicroseconds(node.Offset)
 	var t int64
 	var v float64
 
@@ -1640,7 +1640,7 @@ func (ev *evaluator) vectorSelectorSingle(it *storage.MemoizedSeriesIterator, no
 
 	if !ok || t > refTime {
 		t, v, ok = it.PeekPrev()
-		if !ok || t < refTime-durationMilliseconds(ev.lookbackDelta) {
+		if !ok || t < refTime-durationMicroseconds(ev.lookbackDelta) {
 			return 0, 0, false
 		}
 	}
@@ -1670,12 +1670,12 @@ func (ev *evaluator) matrixSelector(node *parser.MatrixSelector) (Matrix, storag
 	var (
 		vs = node.VectorSelector.(*parser.VectorSelector)
 
-		offset = durationMilliseconds(vs.Offset)
+		offset = durationMicroseconds(vs.Offset)
 		maxt   = ev.startTimestamp - offset
-		mint   = maxt - durationMilliseconds(node.Range)
+		mint   = maxt - durationMicroseconds(node.Range)
 		matrix = make(Matrix, 0, len(vs.Series))
 
-		it = storage.NewBuffer(durationMilliseconds(node.Range))
+		it = storage.NewBuffer(durationMicroseconds(node.Range))
 	)
 	ws, err := checkAndExpandSeriesSet(ev.ctx, node)
 	if err != nil {
@@ -2534,10 +2534,10 @@ func setOffsetForAtModifier(evalTime int64, expr parser.Expr) {
 
 		subqOffset, _, subqTs := subqueryTimes(path)
 		if subqTs != nil {
-			subqOffset += time.Duration(evalTime-*subqTs) * time.Millisecond
+			subqOffset += time.Duration(evalTime-*subqTs) * time.Microsecond
 		}
 
-		offsetForTs := time.Duration(evalTime-*ts) * time.Millisecond
+		offsetForTs := time.Duration(evalTime-*ts) * time.Microsecond
 		offsetDiff := offsetForTs - subqOffset
 		return originalOffset + offsetDiff
 	}

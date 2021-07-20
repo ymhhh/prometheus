@@ -959,11 +959,11 @@ type safePromQLNoStepSubqueryInterval struct {
 	value atomic.Int64
 }
 
-func durationToInt64Millis(d time.Duration) int64 {
-	return int64(d / time.Millisecond)
+func durationToInt64Micro(d time.Duration) int64 {
+	return int64(d / time.Microsecond)
 }
 func (i *safePromQLNoStepSubqueryInterval) Set(ev model.Duration) {
-	i.value.Store(durationToInt64Millis(time.Duration(ev)))
+	i.value.Store(durationToInt64Micro(time.Duration(ev)))
 }
 
 func (i *safePromQLNoStepSubqueryInterval) Get(int64) int64 {
@@ -1281,14 +1281,14 @@ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
 	return tsdb.Options{
 		WALSegmentSize:           int(opts.WALSegmentSize),
 		MaxBlockChunkSegmentSize: int64(opts.MaxBlockChunkSegmentSize),
-		RetentionDuration:        int64(time.Duration(opts.RetentionDuration) / time.Millisecond),
+		RetentionDuration:        int64(time.Duration(opts.RetentionDuration) / time.Microsecond),
 		MaxBytes:                 int64(opts.MaxBytes),
 		NoLockfile:               opts.NoLockfile,
 		AllowOverlappingBlocks:   opts.AllowOverlappingBlocks,
 		WALCompression:           opts.WALCompression,
 		StripeSize:               opts.StripeSize,
-		MinBlockDuration:         int64(time.Duration(opts.MinBlockDuration) / time.Millisecond),
-		MaxBlockDuration:         int64(time.Duration(opts.MaxBlockDuration) / time.Millisecond),
+		MinBlockDuration:         int64(time.Duration(opts.MinBlockDuration) / time.Microsecond),
+		MaxBlockDuration:         int64(time.Duration(opts.MaxBlockDuration) / time.Microsecond),
 		MaxExemplars:             opts.MaxExemplars,
 	}
 }

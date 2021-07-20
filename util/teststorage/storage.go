@@ -36,8 +36,8 @@ func New(t testutil.T) *TestStorage {
 	// Tests just load data for a series sequentially. Thus we
 	// need a long appendable window.
 	opts := tsdb.DefaultOptions()
-	opts.MinBlockDuration = int64(24 * time.Hour / time.Millisecond)
-	opts.MaxBlockDuration = int64(24 * time.Hour / time.Millisecond)
+	opts.MinBlockDuration = int64(24 * time.Hour / time.Microsecond)
+	opts.MaxBlockDuration = int64(24 * time.Hour / time.Microsecond)
 	opts.MaxExemplars = 10
 	db, err := tsdb.Open(dir, nil, nil, opts, tsdb.NewDBStats())
 	if err != nil {

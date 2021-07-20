@@ -85,8 +85,8 @@ func benchmarkWrite(outPath, samplesFile string, numMetrics, numScrapes int) err
 	l := log.With(b.logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 
 	st, err := tsdb.Open(dir, l, nil, &tsdb.Options{
-		RetentionDuration: int64(15 * 24 * time.Hour / time.Millisecond),
-		MinBlockDuration:  int64(2 * time.Hour / time.Millisecond),
+		RetentionDuration: int64(15 * 24 * time.Hour / time.Microsecond),
+		MinBlockDuration:  int64(2 * time.Hour / time.Microsecond),
 	}, tsdb.NewDBStats())
 	if err != nil {
 		return err
@@ -367,7 +367,7 @@ func printBlocks(blocks []tsdb.BlockReader, writeHeader, humanReadable bool) {
 			meta.ULID,
 			getFormatedTime(meta.MinTime, humanReadable),
 			getFormatedTime(meta.MaxTime, humanReadable),
-			time.Duration(meta.MaxTime-meta.MinTime)*time.Millisecond,
+			time.Duration(meta.MaxTime-meta.MinTime)*time.Microsecond,
 			meta.Stats.NumSamples,
 			meta.Stats.NumChunks,
 			meta.Stats.NumSeries,

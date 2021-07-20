@@ -95,19 +95,19 @@ func (importer *ruleImporter) importAll(ctx context.Context) (errs []error) {
 // importRule queries a prometheus API to evaluate rules at times in the past.
 func (importer *ruleImporter) importRule(ctx context.Context, ruleExpr, ruleName string, ruleLabels labels.Labels, start, end time.Time, grp *rules.Group) (err error) {
 	blockDuration := tsdb.DefaultBlockDuration
-	startInMs := start.Unix() * int64(time.Second/time.Millisecond)
-	endInMs := end.Unix() * int64(time.Second/time.Millisecond)
+	startInMs := start.Unix() * int64(time.Second/time.Microsecond)
+	endInMs := end.Unix() * int64(time.Second/time.Microsecond)
 
 	for startOfBlock := blockDuration * (startInMs / blockDuration); startOfBlock <= endInMs; startOfBlock = startOfBlock + blockDuration {
 		endOfBlock := startOfBlock + blockDuration - 1
 
-		currStart := max(startOfBlock/int64(time.Second/time.Millisecond), start.Unix())
+		currStart := max(startOfBlock/int64(time.Second/time.Microsecond), start.Unix())
 		startWithAlignment := grp.EvalTimestamp(time.Unix(currStart, 0).UTC().UnixNano())
 		val, warnings, err := importer.apiClient.QueryRange(ctx,
 			ruleExpr,
 			v1.Range{
 				Start: startWithAlignment,
-				End:   time.Unix(min(endOfBlock/int64(time.Second/time.Millisecond), end.Unix()), 0).UTC(),
+				End:   time.Unix(min(endOfBlock/int64(time.Second/time.Microsecond), end.Unix()), 0).UTC(),
 				Step:  grp.Interval(),
 			},
 		)

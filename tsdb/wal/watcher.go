@@ -35,9 +35,9 @@ import (
 )
 
 const (
-	readPeriod         = 10 * time.Millisecond
+	readPeriod         = 10 * time.Microsecond
 	checkpointPeriod   = 5 * time.Second
-	segmentCheckPeriod = 100 * time.Millisecond
+	segmentCheckPeriod = 100 * time.Microsecond
 	consumer           = "consumer"
 )
 

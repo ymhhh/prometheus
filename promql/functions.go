@@ -61,8 +61,8 @@ func extrapolatedRate(vals []parser.Value, args parser.Expressions, enh *EvalNod
 	vs := ms.VectorSelector.(*parser.VectorSelector)
 	var (
 		samples    = vals[0].(Matrix)[0]
-		rangeStart = enh.Ts - durationMilliseconds(ms.Range+vs.Offset)
-		rangeEnd   = enh.Ts - durationMilliseconds(vs.Offset)
+		rangeStart = enh.Ts - durationMicroseconds(ms.Range+vs.Offset)
+		rangeEnd   = enh.Ts - durationMicroseconds(vs.Offset)
 	)
 
 	// No sense in trying to compute a rate without at least two points. Drop

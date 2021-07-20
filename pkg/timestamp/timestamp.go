@@ -18,17 +18,17 @@ import (
 	"time"
 )
 
-// FromTime returns a new millisecond timestamp from a time.
+// FromTime returns a new Microsecond timestamp from a time.
 func FromTime(t time.Time) int64 {
-	return t.Unix()*1000 + int64(t.Nanosecond())/int64(time.Millisecond)
+	return t.Unix()*1000000 + int64(t.Nanosecond())/int64(time.Microsecond)
 }
 
-// Time returns a new time.Time object from a millisecond timestamp.
+// Time returns a new time.Time object from a Microsecond timestamp.
 func Time(ts int64) time.Time {
-	return time.Unix(ts/1000, (ts%1000)*int64(time.Millisecond)).UTC()
+	return time.Unix(ts/1000, (ts%1000000)*int64(time.Microsecond)).UTC()
 }
 
-// FromFloatSeconds returns a millisecond timestamp from float seconds.
+// FromFloatSeconds returns a Microsecond timestamp from float seconds.
 func FromFloatSeconds(ts float64) int64 {
-	return int64(math.Round(ts * 1000))
+	return int64(math.Round(ts * 1000000))
 }

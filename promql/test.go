@@ -303,7 +303,7 @@ func (cmd *loadCmd) set(m labels.Labels, vals ...parser.SequenceValue) {
 	for _, v := range vals {
 		if !v.Omitted {
 			samples = append(samples, Point{
-				T: ts.UnixNano() / int64(time.Millisecond/time.Nanosecond),
+				T: ts.UnixNano() / int64(time.Microsecond/time.Nanosecond),
 				V: v.Value,
 			})
 		}
@@ -571,7 +571,7 @@ func (t *Test) exec(tc testCommand) error {
 			vec := make(Vector, 0, len(mat))
 			for _, series := range mat {
 				for _, point := range series.Points {
-					if point.T == timeMilliseconds(iq.evalTime) {
+					if point.T == timeMicroseconds(iq.evalTime) {
 						vec = append(vec, Sample{Metric: series.Metric, Point: point})
 						break
 					}
@@ -611,7 +611,7 @@ func (t *Test) clear() {
 		Reg:                      nil,
 		MaxSamples:               10000,
 		Timeout:                  100 * time.Second,
-		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(1 * time.Minute) },
+		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMicroseconds(1 * time.Minute) },
 		EnableAtModifier:         true,
 	}
 
@@ -727,7 +727,7 @@ func (ll *LazyLoader) clear() {
 		Reg:                      nil,
 		MaxSamples:               10000,
 		Timeout:                  100 * time.Second,
-		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(ll.SubqueryInterval) },
+		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMicroseconds(ll.SubqueryInterval) },
 		EnableAtModifier:         true,
 	}
 
@@ -735,7 +735,7 @@ func (ll *LazyLoader) clear() {
 	ll.context, ll.cancelCtx = context.WithCancel(context.Background())
 }
 
-// appendTill appends the defined time series to the storage till the given timestamp (in milliseconds).
+// appendTill appends the defined time series to the storage till the given timestamp (in Microseconds).
 func (ll *LazyLoader) appendTill(ts int64) error {
 	app := ll.storage.Appender(ll.Context())
 	for h, smpls := range ll.loadCmd.defs {
@@ -759,7 +759,7 @@ func (ll *LazyLoader) appendTill(ts int64) error {
 
 // WithSamplesTill loads the samples till given timestamp and executes the given function.
 func (ll *LazyLoader) WithSamplesTill(ts time.Time, fn func(error)) {
-	tsMilli := ts.Sub(time.Unix(0, 0).UTC()) / time.Millisecond
+	tsMilli := ts.Sub(time.Unix(0, 0).UTC()) / time.Microsecond
 	fn(ll.appendTill(int64(tsMilli)))
 }
 

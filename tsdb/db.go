@@ -47,7 +47,7 @@ import (
 
 const (
 	// Default duration of a block in milliseconds.
-	DefaultBlockDuration = int64(2 * time.Hour / time.Millisecond)
+	DefaultBlockDuration = int64(2 * time.Hour / time.Microsecond)
 
 	// Block dir suffixes to make deletion and creation operations atomic.
 	// We decided to do suffixes instead of creating meta.json as last (or delete as first) one,
@@ -75,7 +75,7 @@ func DefaultOptions() *Options {
 	return &Options{
 		WALSegmentSize:            wal.DefaultSegmentSize,
 		MaxBlockChunkSegmentSize:  chunks.DefaultChunkSegmentSize,
-		RetentionDuration:         int64(15 * 24 * time.Hour / time.Millisecond),
+		RetentionDuration:         int64(15 * 24 * time.Hour / time.Microsecond),
 		MinBlockDuration:          DefaultBlockDuration,
 		MaxBlockDuration:          DefaultBlockDuration,
 		NoLockfile:                false,
